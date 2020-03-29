@@ -1,0 +1,16 @@
+[args]
+input_size = 111
+output_size = 1
+parent_ep = 1000
+model_type = vanilla
+hidden = 4096
+bias = 1
+num_layers = 6
+lr = 1e-5
+bn = 1
+dataset_method = plain
+dataset = data_1
+batch = 2048
+multi_gpu = 1
+save_model_every = 20
+test_every = 10
