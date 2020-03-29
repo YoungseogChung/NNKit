@@ -6,16 +6,19 @@ from tqdm import tqdm
 
 # TODO: make these into arguments
 WINDOW_LEN = 100
-# WINDOW_SAMPLING_LEN = 10
-WINDOW_SAMPLING_LEN = 20
+#WINDOW_SAMPLING_NUM = 10
+WINDOW_SAMPLING_NUM = 20
 PRED_INTERVAL = 250
 ACT_SIGNAL = ['pinj']
 TARGET_SIGNAL = ['efsbetan']
+#TARGET_TYPE = 'raw'
+#TARGET_TYPE = 'pdelta'
+TARGET_TYPE = 'delta'
 SIGNAL_LIST = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli', 
                'efsvolume', 'ip', 'kappa', 'tribot', 'tritop', 
                'pinj']
 
-if WINDOW_LEN % WINDOW_SAMPLING_LEN != 0:
+if WINDOW_LEN % WINDOW_SAMPLING_NUM != 0:
     print('Window sampling interval will not be exactly equispaced!')
 
 def find_tidx(target_t, t_array):
@@ -64,16 +67,27 @@ def make_prediction_data(dataset_list, act_idx, target_idx):
                 try:
                     window = values[:, window_beg_idx:window_end_idx]
                     action = np.mean(values[act_idx, window_end_idx : pred_time_idx], axis = 1)
+                    orig_target = values[target_idx, window_end_idx-1]
                     target = values[target_idx, pred_time_idx]
+                    target_delta = target-orig_target
+                    target_pdelta = target_delta/(orig_target + (np.sign(orig_target)*1e-10))
                 except:
                     print(shot, values.shape, window_beg_idx, window_end_idx, pred_time_idx)
                     raise RuntimeError
-                window_sample = window[:,np.linspace(0, WINDOW_LEN-1, WINDOW_SAMPLING_LEN).astype(int)]
+                window_sample = window[:,np.linspace(0, WINDOW_LEN-1, WINDOW_SAMPLING_NUM).astype(int)]
 
                 curr_sasr = (window_sample, action, target)
                 curr_X = np.concatenate([window_sample.flatten(), action.flatten()]).reshape(1,-1)
                 assert curr_X.shape[0] == 1
-                curr_y = target.flatten().reshape(1,-1)
+                if TARGET_TYPE=='raw':
+                    curr_y = target.flatten().reshape(1,-1)
+                elif TARGET_TYPE=='delta':
+                    curr_y = target_delta.flatten().reshape(1,-1)
+                elif TARGET_TYPE=='pdelta':
+                    curr_y = target_pdelta.flatten().reshape(1,-1)
+                else:
+                    raise ValueError('TARGET_TYPE must be one of raw, delta or pdelta')
+
 
                 sar_list.append(curr_sasr)
                 X_list.append(curr_X)
@@ -88,6 +102,9 @@ def make_prediction_data(dataset_list, act_idx, target_idx):
 
 def main(data_dir):
 
+    if os.path.exists(data_dir):
+        raise RuntimeError('data directory already exists')
+    os.mkdir(data_dir)
     train_dis = pkl.load(open('train_dis.pkl', 'rb'), encoding='latin1')
     test_dis = pkl.load(open('test_dis.pkl', 'rb'), encoding='latin1')
     train_nondis = pkl.load(open('train_nondis.pkl', 'rb'), encoding='latin1')

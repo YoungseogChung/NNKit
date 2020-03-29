@@ -42,7 +42,7 @@ def create_single_model(args):
            Num layers: {}\n \
            Hidden units per layer: {}\n \
            Using bias: {}\n \
-           Using batchnorm {}\n \ 
+           Using batchnorm {}\n \
            With batchsize {}'.format( \
            args.input_size, args.output_size, args.actv,
            args.num_layers, args.hidden, args.bias, args.bn, args.batch))
