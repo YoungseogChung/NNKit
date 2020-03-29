@@ -1,0 +1,17 @@
+[args]
+input_size = 111
+output_size = 2
+parent_ep = 1000
+model_type = pnn 
+hidden = 4096
+bias = 1
+num_layers = 6
+lr = 1e-6
+bn = 1
+dataset_method = plain
+dataset = delta_1
+batch = 2048
+gpu = 1
+multi_gpu = 1
+save_model_every = 10
+test_every = 10
