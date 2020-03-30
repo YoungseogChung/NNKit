@@ -205,7 +205,8 @@ def main():
 
         torch.backends.cudnn.benchmark = True
         if args.multi_gpu:
-            _DEVICE = torch.device(args.device)
+            #_DEVICE = torch.device(args.device)
+            args.device = args.device_ids[0]
             args.batch *= GPU_COUNT
             print('Total batch size per iteration is now {}'.format(args.batch))
 
