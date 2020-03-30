@@ -1,5 +1,5 @@
 [args]
-input_size = 111
+input_size = 221
 output_size = 1
 parent_ep = 1000
 model_type = vanilla
