@@ -1,9 +1,9 @@
 [args]
-input_size = 111
+input_size = 221
 output_size = 2
 parent_ep = 1000
 model_type = pnn 
-hidden = 2048
+hidden = 4096
 bias = 1
 num_layers = 6
 lr = 1e-6
