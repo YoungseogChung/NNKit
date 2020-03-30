@@ -7,7 +7,8 @@ from tqdm import tqdm
 # TODO: make these into arguments
 WINDOW_LEN = 100
 #WINDOW_SAMPLING_NUM = 10
-WINDOW_SAMPLING_NUM = 20
+#WINDOW_SAMPLING_NUM = 20
+WINDOW_SAMPLING_NUM = 5
 PRED_INTERVAL = 250
 ACT_SIGNAL = ['pinj']
 TARGET_SIGNAL = ['efsbetan']
@@ -70,7 +71,10 @@ def make_prediction_data(dataset_list, act_idx, target_idx):
                     orig_target = values[target_idx, window_end_idx-1]
                     target = values[target_idx, pred_time_idx]
                     target_delta = target-orig_target
+                    if orig_target == 0:
+                        print(shot, orig_target, target_delta)
                     target_pdelta = target_delta/(orig_target + (np.sign(orig_target)*1e-10))
+
                 except:
                     print(shot, values.shape, window_beg_idx, window_end_idx, pred_time_idx)
                     raise RuntimeError

@@ -1,5 +1,5 @@
 [args]
-input_size = 221
+input_size = 56
 output_size = 1
 parent_ep = 1000
 model_type = vanilla
@@ -9,7 +9,7 @@ num_layers = 6
 lr = 1e-7
 bn = 1
 dataset_method = plain
-dataset = delta_2
+dataset = delta_3
 batch = 2048
 gpu = 1
 multi_gpu = 1
