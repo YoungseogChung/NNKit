@@ -13,11 +13,14 @@ import torch.optim as optim
 import torch.nn.init as init
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset 
+from torch.nn.parallel import gather
 
 from utils.arg_parser import parse_exp_args
 from utils.common import get_gpu_name
 from utils.common import Logger
+
+from utils.parallel import DataParallelModel, DataParallelCriterion
 
 def create_dataloader(args, set_type):
     if set_type == 'train':
@@ -29,7 +32,7 @@ def create_dataloader(args, set_type):
     elif set_type == 'test':
         print('Making testing dataset loader')
         test_set = args.dataset_method(args.test_X_path, args.test_y_path)
-        data_loader = DataLoader(dataset=test_set, batch_size=args.batch, shuffle=True,
+        data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
                                 num_workers = args.num_cpu - 2, 
                                 pin_memory = args.pin_memory)
     return data_loader
@@ -56,7 +59,13 @@ def create_single_model(args):
     args.loss = model.loss
     if args.multi_gpu:
         print('Using data parallelism with {} GPUs'.format(args.num_gpu))
-        model = nn.DataParallel(model, device_ids = args.device_ids)
+        #model = nn.DataParallel(model, device_ids = args.device_ids)
+
+        ###
+        model = DataParallelModel(model, device_ids = args.device_ids)
+        args.loss = DataParallelCriterion(args.loss, device_ids = args.device_ids)
+        ###
+
     print('Sending model to device {}'.format(args.device))
     model.to(args.device)
     return model
@@ -111,12 +120,23 @@ def train_epoch(model, dataloader, optimizer, args):
         loss = args.loss(output, target)
         optimizer.zero_grad()
 
-        epoch_loss += loss.item()
+        if args.multi_gpu:
+            #with torch.no_grad():
+            #    loss_resized = [x.unsqueeze(0) for x in loss]
+            #    gathered_loss = gather(loss_resized, args.device)
+            #    total_loss = torch.mean(gathered_loss)
+            #    epoch_loss += total_loss.item() 
+            #for item in loss:
+            #    item.backward()
+            epoch_loss += loss.item()
+            loss.backward()
+        else:
+            epoch_loss += loss.item()
+            loss.backward()
 
-        loss.backward()
         optimizer.step()
 
-    return epoch_loss/idx
+    return epoch_loss/(idx+1)
 
 def test_epoch(model, dataloader, args):
     model.eval()
@@ -130,9 +150,15 @@ def test_epoch(model, dataloader, args):
                            target.to(args.device, non_blocking=args.non_blocking)
             output = model(data)
             loss = args.loss(output, target)
+            ####
+            #if args.multi_gpu:
+            #    loss_resized = [x.unsqueeze(0) for x in loss]
+            #    gathered_loss = gather(loss_resized, args.device)
+            #    loss = torch.mean(gathered_loss)
+            ####
             loss_val += loss.item()
-            out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
-        loss_mean = loss_val/idx
+            #out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
+        loss_mean = loss_val/(idx+1)
         return loss_mean
         
 def train(args, logger):
@@ -195,6 +221,9 @@ def main():
     GPU_COUNT = torch.cuda.device_count()
     print('Using device {}'.format(args.device))
     if 'cuda' in args.device.type:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = True
+
         if args.use_gpu is not None:
             os.environ['CUDA_VISIBLE_DEVICES'] = args.use_gpu 
             gpu_list = args.use_gpu.split(',')
@@ -203,7 +232,6 @@ def main():
         else:
             args.device_ids = ['cuda:'+str(x) for x in range(GPU_COUNT)]
 
-        torch.backends.cudnn.benchmark = True
         if args.multi_gpu:
             #_DEVICE = torch.device(args.device)
             args.device = args.device_ids[0]

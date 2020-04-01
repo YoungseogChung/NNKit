@@ -14,3 +14,4 @@ Development ideas from:
   - https://medium.com/huggingface/training-larger-batches-practical-tips-on-1-gpu-multi-gpu-distributed-setups-ec88c3e51255
   - https://camel.readthedocs.io/en/latest/yamlref.html
   - http://blog.vwelch.com/2011/04/combining-configparser-and-argparse.html
+  - https://blog.paperspace.com/pytorch-memory-multi-gpu-debugging/
