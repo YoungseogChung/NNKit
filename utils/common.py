@@ -72,7 +72,8 @@ class PlainDataset(Dataset):
             y_arr = np.load(y_arr_path)
         print('Loading data into datasets')
         self.X = torch.FloatTensor(X_arr)
-        self.y = torch.FloatTensor(y_arr).reshape(-1,1)
+        num_items = self.X.shape[0]
+        self.y = torch.FloatTensor(y_arr).reshape(num_items,-1)
         print('Loaded {} datapoints'.format(self.y.shape[0]))
 
     def __len__(self):
