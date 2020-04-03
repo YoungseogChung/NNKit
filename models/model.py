@@ -9,7 +9,7 @@ from torch.autograd import Variable
 
 class LinearLayer(nn.Module):
     def __init__(self, in_features, out_features,
-                 bias=True, use_bn=False,
+                 bias=True, use_bn=True,
                  actv_type='relu'):
         super(LinearLayer, self).__init__()
 
@@ -52,11 +52,67 @@ class LinearLayer(nn.Module):
         out = F.linear(input, self.weight, self.bias)
         if self.bn:
             out = self.bn(out)
-        if self.activation:
+        if self.activation is not None:
             out = self.activation(out)
 
         return out
 
+
+class Conv1DLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, padding=0,
+                 bias=False, use_bn=True, 
+                 pool_type=None, actv_type='relu'):
+        super(Conv1DLayer, self).__init__()
+
+        """ conv1d  layer """
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        self.weight = Parameter(torch.Tensor(out_channels, in_channels, kernel_size))
+        if bias:
+            self.bias = Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+        """ batch normalization """
+        if use_bn:
+            self.bn = nn.BatchNorm1d(self.out_channels)
+        else:
+            self.bn = None
+
+        """ activation """
+        if actv_type is None:
+            self.activation = None
+        elif actv_type == 'relu':
+            self.activation = nn.ReLU(inplace=True)
+        elif actv_type == 'elu':
+            self.activation = nn.ELU(inplace=True)
+        elif actv_type == 'selu':
+            self.activation = nn.SELU(inplace=True)
+        else:
+            raise ValueError
+
+    def reset_parameters(self, reset_indv_bias=None):
+        # init.kaiming_uniform_(self.weight, a=math.sqrt(0)) # kaiming init
+        if (reset_indv_bias is None) or (reset_indv_bias is False):
+            init.xavier_uniform_(self.weight, gain=1.0)  # xavier init
+        if (reset_indv_bias is None) or ((self.bias is not None) and reset_indv_bias is True):
+            init.constant_(self.bias, 0)
+
+    def forward(self, input):
+        out = F.conv1d(input=input, weight=self.weight, bias=self.bias, 
+                       stride=self.stride, padding=self.padding)
+        if self.bn:
+            out = self.bn(out)
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
 
 class vanilla_nn(nn.Module):
     def __init__(self, input_size=1, output_size=1, bias=True,
@@ -69,9 +125,10 @@ class vanilla_nn(nn.Module):
         self.loss = nn.MSELoss()
 
         self.fcs = nn.ModuleList()
+        """ input layer """
         self.fcs.append(LinearLayer(input_size, hidden_size, bias,
                                     use_bn=use_bn, actv_type=actv_type))
-        for _ in range(num_layers-2):
+        for _ in range(num_layers-1):
             self.fcs.append(LinearLayer(hidden_size, hidden_size, bias,
                                         use_bn=use_bn, actv_type=actv_type))
         self.fcs.append(LinearLayer(hidden_size, output_size, bias,
@@ -104,7 +161,7 @@ class prob_nn(nn.Module):
         self.fcs = nn.ModuleList()
         self.fcs.append(LinearLayer(input_size, hidden_size, bias,
                                     use_bn=use_bn, actv_type=actv_type))
-        for _ in range(num_layers-2):
+        for _ in range(num_layers-1):
             self.fcs.append(LinearLayer(hidden_size, hidden_size, bias,
                                         use_bn=use_bn, actv_type=actv_type))
         self.fcs.append(LinearLayer(hidden_size, output_size, bias,
@@ -131,22 +188,20 @@ class prob_nn(nn.Module):
         self.adversarial_eps = feat_eps_tensor
 
     def loss(self, batch_pred, batch_y):
-        # import pdb; pdb.set_trace()
         pred_mean, pred_var = torch.split(batch_pred, self.mean_dim, dim=1)
         # pred_mean = batch_pred[:,:self.mean_dim]
         # pred_var = batch_pred[:,self.mean_dim:]
 
         diff = torch.sub(batch_y, pred_mean)
-        var = self.softplus(pred_var)
-        for v in var:
+        for v in pred_var:
             if v == float('inf'):
                 raise ValueError('infinite variance')
             if v > self.max_var:
                 self.max_var = v
             if v < self.min_var:
                 self.min_var = v
-        loss = torch.mean(torch.div(diff**2, 2*var))
-        loss += torch.mean(torch.log(var)/2)
+        loss = torch.mean(torch.div(diff**2, 2*pred_var))
+        loss += torch.mean(torch.log(pred_var)/2)
 
         # pred_var = torch.clamp(pred_var, min=1e-10)
         # term_1 = torch.log(pred_var)/2
@@ -206,7 +261,11 @@ class prob_nn(nn.Module):
             out = F.softmax(X, dim=1)
         else:
             out = X
-
-        return out
+        
+        means = out[:,:self.mean_dim]
+        variances = F.softplus(out[:,self.mean_dim:]) + 1e-8
+        pnn_out = torch.cat([means, variances], dim=1)
+        #pnn_out = torch.cat([out[:,:self.mean_dim], F.softplus(out[:,self.mean_dim:])], dim=1)
+        return pnn_out
 
 

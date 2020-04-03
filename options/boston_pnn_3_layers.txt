@@ -1,0 +1,20 @@
+[args]
+input_size = 14
+output_size = 2
+parent_ep = 100
+model_type = pnn 
+hidden = 50
+bias = 1
+num_layers = 3
+lr = 1e-1
+bn = 0
+make_train_test = 1
+test_prop = 0.1
+dataset_method = plain
+dataset = boston
+batch = 100
+multi_gpu = 0
+expand_batch = 0
+save_model_every = 10
+test_every = 10
+seed = 1029

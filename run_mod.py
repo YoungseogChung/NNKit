@@ -20,34 +20,9 @@ from utils.arg_parser import parse_exp_args
 from utils.common import get_gpu_name
 from utils.common import Logger
 
+from utils.parallel import DataParallelModel, DataParallelCriterion
+
 def create_dataloader(args, set_type):
-    if args.make_train_test:
-        X_arr = np.load(args.X_path)
-        y_arr = np.load(args.y_path)
-        num_items = y_arr.shape[0]
-        num_test = int(num_items*args.test_prop)
-        num_train = num_items - num_test
-        test_idxs = np.random.choice(num_items, size=num_test, replace=False)
-        train_idxs = np.array([x for x in range(num_items) if x not in test_idxs])
-    
-        train_X = X_arr[train_idxs]
-        train_y = y_arr[train_idxs]
-        test_X = X_arr[test_idxs]
-        test_y = y_arr[test_idxs]
-        
-        print('Making training dataset loader')
-        train_set = args.dataset_method(None, None, train_X, train_y)
-        train_data_loader = DataLoader(dataset=train_set, batch_size=args.batch, shuffle=True,
-                                       num_workers = args.num_cpu - 2, 
-                                      pin_memory = args.pin_memory)
-        print('Making testing dataset loader')
-        test_set = args.dataset_method(None, None, test_X, test_y)
-        test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
-                                      num_workers = args.num_cpu - 2, 
-                                      pin_memory = args.pin_memory)
-
-        return train_data_loader, test_data_loader
-
     if set_type == 'train':
         print('Making training dataset loader')
         train_set = args.dataset_method(args.train_X_path, args.train_y_path)
@@ -60,11 +35,20 @@ def create_dataloader(args, set_type):
         data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
                                 num_workers = args.num_cpu - 2, 
                                 pin_memory = args.pin_memory)
-        
     return data_loader
    
 def create_single_model(args):
-    print('Creating model')
+    print('Creating model with\n \
+           Input size: {}\n \
+           Output size: {}\n \
+           Activation {}\n \
+           Num layers: {}\n \
+           Hidden units per layer: {}\n \
+           Using bias: {}\n \
+           Using batchnorm {}\n \
+           With batchsize {}'.format( \
+           args.input_size, args.output_size, args.actv,
+           args.num_layers, args.hidden, args.bias, args.bn, args.batch))
     model = args.model(input_size=args.input_size, output_size=args.output_size,
                        actv_type=args.actv,
                        num_layers=args.num_layers,
@@ -75,7 +59,12 @@ def create_single_model(args):
     args.loss = model.loss
     if args.multi_gpu:
         print('Using data parallelism with {} GPUs'.format(args.num_gpu))
-        model = nn.DataParallel(model, device_ids = args.device_ids)
+        #model = nn.DataParallel(model, device_ids = args.device_ids)
+
+        ###
+        model = DataParallelModel(model, device_ids = args.device_ids)
+        args.loss = DataParallelCriterion(args.loss, device_ids = args.device_ids)
+        ###
 
     print('Sending model to device {}'.format(args.device))
     model.to(args.device)
@@ -130,8 +119,19 @@ def train_epoch(model, dataloader, optimizer, args):
 
         loss = args.loss(output, target)
         optimizer.zero_grad()
-        epoch_loss += loss.item()
-        loss.backward()
+
+        if args.multi_gpu:
+            with torch.no_grad():
+                loss_resized = [x.unsqueeze(0) for x in loss]
+                gathered_loss = gather(loss_resized, args.device)
+                total_loss = torch.mean(gathered_loss)
+                epoch_loss += total_loss.item() 
+            for item in loss:
+                item.backward()
+        else:
+            epoch_loss += loss.item()
+            loss.backward()
+
         optimizer.step()
 
     return epoch_loss/(idx+1)
@@ -148,29 +148,30 @@ def test_epoch(model, dataloader, args):
                            target.to(args.device, non_blocking=args.non_blocking)
             output = model(data)
             loss = args.loss(output, target)
+            ###
+            if args.multi_gpu:
+                loss_resized = [x.unsqueeze(0) for x in loss]
+                gathered_loss = gather(loss_resized, args.device)
+                loss = torch.mean(gathered_loss)
+            ###
             loss_val += loss.item()
-            out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
+            #out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
         loss_mean = loss_val/(idx+1)
-        return loss_mean, out_pred
+        return loss_mean
         
 def train(args, logger):
     """ make dataloader """
-    if args.make_train_test:
-        train_loader, test_loader = create_dataloader(args, None)
-    else:
-        train_loader = create_dataloader(args, 'train')
-        test_loader = create_dataloader(args, 'test')
+    train_loader = create_dataloader(args, 'train')
+    test_loader = create_dataloader(args, 'test')
 
     """ make model and optimizer """
     if args.load_model:
         model = load_model(args)
     else:
         model = create_single_model(args)
-
     # TODO: make the optimizer an argument
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # TODO: make learning rate scheduler 
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True)
 
     print('Starting training...')
     for ep in tqdm(range(args.parent_ep)):
@@ -179,15 +180,15 @@ def train(args, logger):
         
         if ep % args.test_every == 0:
             print('Testing at epoch {}'.format(ep))
-            test_loss, test_preds = test_epoch(model, test_loader, args)
+            test_loss = test_epoch(model, test_loader, args)
             logger.save_loss(type_of_loss='test', loss_val=test_loss, epoch_num=ep)
-            logger.save_preds(pred_tensor=test_preds, epoch_num=ep)
-            lr_scheduler.step(test_loss)
 
         if ep % args.save_model_every == 0:
             logger.save_model(model, ep)
 
-def parse_run_args():
+
+def main():
+    """ get run args """
     parser = argparse.ArgumentParser()
     #parser.add_argument('--o_dir', type=str, default='options',
     #                    help='dir containing options files')
@@ -200,22 +201,24 @@ def parse_run_args():
     parser.add_argument('--use_gpu', type=str, default=None,
                         help='list gpus you do not want to use')
     run_args = parser.parse_args()
+        
+    """ get exp args and  merge args"""
+    args_file = run_args.o
+    args = parse_exp_args(args_file)
 
-    return run_args
+    for k,v in vars(run_args).items():
+        vars(args)[k] = v
+    
+    """ set seeds """
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
-def set_seeds(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-def parse_gpu_options(args):
+    """ multi GPU """
     CPU_COUNT = multiprocessing.cpu_count()
     GPU_COUNT = torch.cuda.device_count()
     print('Using device {}'.format(args.device))
     if 'cuda' in args.device.type:
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.enabled = True
-
         if args.use_gpu is not None:
             os.environ['CUDA_VISIBLE_DEVICES'] = args.use_gpu 
             gpu_list = args.use_gpu.split(',')
@@ -224,62 +227,23 @@ def parse_gpu_options(args):
         else:
             args.device_ids = ['cuda:'+str(x) for x in range(GPU_COUNT)]
 
+        torch.backends.cudnn.benchmark = True
         if args.multi_gpu:
             #_DEVICE = torch.device(args.device)
             args.device = args.device_ids[0]
-            if args.expand_batch:
-                args.batch *= GPU_COUNT
+            args.batch *= GPU_COUNT
             print('Total batch size per iteration is now {}'.format(args.batch))
 
     args.num_cpu = CPU_COUNT
     args.num_gpu = GPU_COUNT
 
-    return args
-
-def print_model_specs(args):
-    print(('Launching training with {} model with\n' 
-           '  Input size: {}\n'
-           '  Output size: {}\n'
-           '  Activation {}\n'
-           '  Num hidden layers: {}\n'
-           '  Hidden units per layer: {}\n'
-           '  Using bias: {}\n'
-           '  Using batchnorm {}\n'
-           '  With batchsize {}').format( \
-           args.model_type, args.input_size, args.output_size, args.actv,
-           args.num_layers, args.hidden, args.bias, args.bn, args.batch))
-
-
-
-def main():
-    """ get run args """
-    run_args = parse_run_args()
-        
-    """ get exp args and  merge args"""
-    args_file = run_args.o
-    args = parse_exp_args(args_file)
-
-    for k,v in vars(run_args).items():
-        vars(args)[k] = v
-    print(args)
-    
-    """ set seeds """
-    set_seeds(args.seed)
-
-    """ multi GPU """
-    args = parse_gpu_options(args)
-
-    """ print model type """
-    print_model_specs(args)
-
-    """ check before launch """
-    import pdb; pdb.set_trace()
 
     """ make logger """
     print('Creating logger for log dir {}/{}'.format(args.log_dir, args.id))
     logger = Logger(args.id, args_file, args.log_dir, args)
 
-    """ launch training """
+    """ train """
+    import pdb; pdb.set_trace()
     train(args, logger)
 
 if __name__=='__main__':

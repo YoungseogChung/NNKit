@@ -29,6 +29,7 @@ def parse_exp_args(args_file):
           'lr'          : 1e-3, # learning rate
           ### dataset args
           'dataset_method' : 'plain',  # dataset class to use
+          'make_train_test': 0,        # 1 to make train test split
           'dataset'        : 'data_1', # dataset data to use
           'batch'          : 16,       # training batch size
           'train_size'     : 100,      # train dataset size
@@ -70,18 +71,23 @@ def parse_exp_args(args_file):
     args.dataset_method = cf.get('args', 'dataset_method')   
     args.dataset = str(cf.get('args', 'dataset')) 
 
-    """ train dataset """
+    """ datasets """
     args.batch = int(cf.get('args', 'batch'))   
     args.train_size = int(cf.get('args', 'train_size'))   
-
-    """ test dataset """
     args.test_size = int(cf.get('args', 'test_size'))   
+    args.make_train_test = bool(int(cf.get('args','make_train_test')))
+    if args.make_train_test:
+        args.test_prop = float(cf.get('args','test_prop'))
 
-    """ misc args """
+    """ multi gpu args """
     args.gpu = int(cf.get('args', 'gpu'))   
     args.multi_gpu = bool(int(cf.get('args', 'multi_gpu'))) 
+    if args.multi_gpu:
+        args.expand_batch = bool(int(cf.get('args', 'expand_batch')))
     args.pin_memory = bool(int(cf.get('args', 'pin_memory')))
     args.non_blocking = bool(int(cf.get('args', 'non_blocking')))
+
+    """ misc args """
     args.seed = int(cf.get('args', 'seed'))   
     args.save_model_every = int(cf.get('args', 'save_model_every')) 
     args.test_every = int(cf.get('args', 'test_every')) 
@@ -95,11 +101,15 @@ def parse_exp_args(args_file):
     """ set datasets """
     if args.dataset_method == 'plain':
         args.dataset_method = PlainDataset
-
-    args.train_X_path = os.path.join('data', args.dataset, 'train_X.npy')
-    args.train_y_path = os.path.join('data', args.dataset, 'train_y.npy')
-    args.test_X_path = os.path.join('data', args.dataset, 'test_X.npy')
-    args.test_y_path = os.path.join('data', args.dataset, 'test_y.npy')
+    
+    if args.make_train_test:
+        args.X_path = os.path.join('data', args.dataset,'X.npy')
+        args.y_path = os.path.join('data', args.dataset, 'y.npy')
+    else:
+        args.train_X_path = os.path.join('data', args.dataset, 'train_X.npy')
+        args.train_y_path = os.path.join('data', args.dataset, 'train_y.npy')
+        args.test_X_path = os.path.join('data', args.dataset, 'test_X.npy')
+        args.test_y_path = os.path.join('data', args.dataset, 'test_y.npy')
         
     """ set data params"""
     args.train_data_params = {'batch_size': args.batch, 'shuffle': True}

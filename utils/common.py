@@ -57,12 +57,19 @@ class Logger():
         save_file = os.path.join(self.save_path, 'model_ep_{}'.format(epoch_num))
         model.eval()
         torch.save(model.state_dict(), save_file)
+
+    def save_preds(self, pred_tensor, epoch_num):
+        save_file = os.path.join(self.save_path, 'test_preds_ep_{}.npy'.format(epoch_num))
+        np.save(save_file, pred_tensor.detach().cpu().numpy())
+
+
     
 
 class PlainDataset(Dataset):
-    def __init__(self, X_arr_path, y_arr_path):
-        X_arr = np.load(X_arr_path)
-        y_arr = np.load(y_arr_path)
+    def __init__(self, X_arr_path, y_arr_path, X_arr=None, y_arr=None):
+        if X_arr_path is not None and X_arr is None:
+            X_arr = np.load(X_arr_path)
+            y_arr = np.load(y_arr_path)
         print('Loading data into datasets')
         self.X = torch.FloatTensor(X_arr)
         self.y = torch.FloatTensor(y_arr).reshape(-1,1)
