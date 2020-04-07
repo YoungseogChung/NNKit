@@ -50,13 +50,23 @@ def create_dataloader(args, set_type):
 
     if set_type == 'train':
         print('Making training dataset loader')
-        train_set = args.dataset_method(args.train_X_path, args.train_y_path)
+        train_set = args.dataset_method(args.train_X_path, args.train_y_path, 
+                                        normalize=args.normalize)
+        if args.normalize:
+            args.X_mean, args.X_std = train_set.X_mean, train_set.X_std
+            args.y_mean, args.y_std = train_set.y_mean, train_set.y_std 
         data_loader = DataLoader(dataset=train_set, batch_size=args.batch, shuffle=True,
                                 num_workers = args.num_cpu - 2, 
                                 pin_memory = args.pin_memory)
     elif set_type == 'test':
         print('Making testing dataset loader')
-        test_set = args.dataset_method(args.test_X_path, args.test_y_path)
+        if args.normalize:
+            X_norm_stats = (args.X_mean, args.X_std)
+            y_norm_stats = (args.y_mean, args.y_std)
+        test_set = args.dataset_method(args.test_X_path, args.test_y_path, 
+                                       normalize = False,
+                                       X_norm_stats = X_norm_stats,
+                                       y_norm_stats = y_norm_stats)
         data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
                                 num_workers = args.num_cpu - 2, 
                                 pin_memory = args.pin_memory)
@@ -65,12 +75,16 @@ def create_dataloader(args, set_type):
    
 def create_single_model(args):
     print('Creating model')
-    model = args.model(input_size=args.input_size, output_size=args.output_size,
-                       actv_type=args.actv,
-                       num_layers=args.num_layers,
-                       hidden_size=args.hidden, 
-                       bias=args.bias, 
-                       use_bn=args.bn)
+    if len(args.model_arch) < 1:
+        model = args.model(input_size=args.input_size, output_size=args.output_size,
+                           actv_type=args.actv,
+                           num_layers=args.num_layers,
+                           hidden_size=args.hidden, 
+                           bias=args.bias, 
+                           use_bn=args.bn)
+    else:
+        model = args.model(arch_str=args.model_arch, in_channels=args.in_channels,
+                           in_length = args.in_length)
 
     args.loss = model.loss
     if args.multi_gpu:
@@ -154,6 +168,13 @@ def test_epoch(model, dataloader, args):
         return loss_mean, out_pred
         
 def train(args, logger):
+
+    """ make model """
+    if args.load_model:
+        model = load_model(args)
+    else:
+        model = create_single_model(args)
+
     """ make dataloader """
     if args.make_train_test:
         train_loader, test_loader = create_dataloader(args, None)
@@ -161,16 +182,13 @@ def train(args, logger):
         train_loader = create_dataloader(args, 'train')
         test_loader = create_dataloader(args, 'test')
 
-    """ make model and optimizer """
-    if args.load_model:
-        model = load_model(args)
-    else:
-        model = create_single_model(args)
-
+    """ make optimizer """
     # TODO: make the optimizer an argument
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # TODO: make learning rate scheduler 
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=args.patience, 
+                                                        verbose=True)
+
 
     print('Starting training...')
     for ep in tqdm(range(args.parent_ep)):
@@ -183,6 +201,7 @@ def train(args, logger):
             logger.save_loss(type_of_loss='test', loss_val=test_loss, epoch_num=ep)
             logger.save_preds(pred_tensor=test_preds, epoch_num=ep)
             lr_scheduler.step(test_loss)
+            print('EP {0} train_loss {1:.3f}, test loss {2:.3f}'.format(ep, ep_loss, test_loss))
 
         if ep % args.save_model_every == 0:
             logger.save_model(model, ep)
@@ -261,7 +280,7 @@ def main():
 
     for k,v in vars(run_args).items():
         vars(args)[k] = v
-    print(args)
+    #print(args)
     
     """ set seeds """
     set_seeds(args.seed)
@@ -270,7 +289,8 @@ def main():
     args = parse_gpu_options(args)
 
     """ print model type """
-    print_model_specs(args)
+    if args.model_type in ['vanilla', 'pnn']:
+        print_model_specs(args)
 
     """ check before launch """
     import pdb; pdb.set_trace()

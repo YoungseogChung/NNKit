@@ -1,0 +1,31 @@
+[general]
+parent_ep = 
+input_size = 
+output_size = 
+
+[model]
+model_type = 
+actv = 
+num_layers = 
+hidden = 
+bias = 
+bn = 
+
+[optimizer]
+opt_method = 
+lr = 
+lr_scheduler =
+
+[dataset]
+batch = 
+
+[gpu]
+gpu = 
+multi_gpu = 
+expand_batch = 
+
+[misc]
+seed = 
+save_model_every = 
+test_every = 
+

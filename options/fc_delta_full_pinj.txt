@@ -1,0 +1,32 @@
+[general]
+parent_ep = 1000
+
+[model]
+model_type = vanilla
+input_size = 1200
+output_size = 1
+actv = selu
+num_layers = 10
+hidden = 2048
+bias = 1
+bn = 1
+
+[optimizer]
+opt_method = adam
+lr = 1e-3
+lr_scheduler = 1
+
+[dataset]
+dataset = cnn_delta_full_pinj
+batch = 4096
+
+[gpu]
+gpu = 1
+multi_gpu = 1
+expand_batch = 1
+
+[misc]
+seed = 1234
+save_model_every = 10
+test_every = 10
+

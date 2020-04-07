@@ -1,0 +1,28 @@
+[general]
+parent_ep = 
+
+[model]
+model_type = 
+arch = 
+in_channels = 
+in_length = 
+actv = 
+
+[optimizer]
+opt_method = 
+lr = 
+lr_scheduler =
+
+[dataset]
+batch = 
+
+[gpu]
+gpu = 
+multi_gpu = 
+expand_batch = 
+
+[misc]
+seed = 
+save_model_every = 
+test_every = 
+

@@ -4,7 +4,7 @@ from argparse import Namespace
 import numpy as np
 
 sys.path.append('../')
-from models.model import vanilla_nn, prob_nn
+from models.model import vanilla_nn, prob_nn, cnn
 from utils.common import PlainDataset
 
 
@@ -18,6 +18,7 @@ def parse_exp_args(args_file):
           'ens_ep'      : 300,  # max number of epochs to train for ensemble
           'num_ens'     : 5,    # number of models in ensemble
           ### model args 
+          'arch'  : '',   # declaring model architechture
           'load_model'  : 0,    # 1 to load a model 
           'model_path'  : '',   # file path of model to load
           'model_type'  : 'vanilla', # type of neural network to use
@@ -26,11 +27,17 @@ def parse_exp_args(args_file):
           'hidden'      : 10,   # hidden dimension of neural networks
           'bias'        : 1,    # 1 to use bias in network weights
           'bn'          : 1,    # 1 to use batch normalization
-          'lr'          : 1e-3, # learning rate
+          ### optimizer args
+          'optimizer'   : 'adam',  # type of optimzier to use
+          'lr'          : 1e-3,    # learning rate
+          'lr_scheduler': 1,       # 1 to use adaptive lr scheduler
+          'patience'    : 1,       # patience parameter for lr scheduler
+          'momentum'    : 0.9,     # momentum parameter for optimizer (SGD)
           ### dataset args
           'dataset_method' : 'plain',  # dataset class to use
           'make_train_test': 0,        # 1 to make train test split
           'dataset'        : 'data_1', # dataset data to use
+          'normalize'      : 1,        # 1 to normalize training features 
           'batch'          : 16,       # training batch size
           'train_size'     : 100,      # train dataset size
           'test_size'      : 30,       # test dataset size
@@ -49,54 +56,70 @@ def parse_exp_args(args_file):
 
     args = Namespace()
     """ general args """
-    args.parent_ep = int(cf.get('args', 'parent_ep'))   
-    args.ens_ep = int(cf.get('args', 'ens_ep'))   
+    args.parent_ep = int(cf.get('general', 'parent_ep'))   
+    args.ens_ep = int(cf.get('general', 'ens_ep'))   
 
     """ model args """
-    args.load_model = bool(int(cf.get('args', 'load_model')))
-    args.model_path = str(cf.get('args', 'model_path'))
-    args.model_type = str(cf.get('args', 'model_type'))   
-    args.actv = str(cf.get('args', 'actv'))
-    args.num_layers = int(cf.get('args', 'num_layers'))   
-    args.hidden = int(cf.get('args', 'hidden'))   
-    args.bias = bool(int(cf.get('args', 'bias')))
-    args.bn = bool(int(cf.get('args', 'bn')))
-    args.lr = float(cf.get('args', 'lr'))   
+    args.model_type = str(cf.get('model', 'model_type'))   
+    args.model_arch = str(cf.get('model', 'arch'))
+    args.load_model = bool(int(cf.get('model', 'load_model')))
+    args.output_size = int(cf.get('model', 'output_size'))
+    if len(args.model_arch) >= 1:
+        args.in_channels = int(cf.get('model', 'in_channels'))
+        args.in_length = int(cf.get('model', 'in_length'))
+    if len(args.model_arch) < 1:
+        args.input_size = int(cf.get('model', 'input_size'))
+        args.model_path = str(cf.get('model', 'model_path'))
+        args.actv = str(cf.get('model', 'actv'))
+        args.num_layers = int(cf.get('model', 'num_layers'))   
+        args.hidden = int(cf.get('model', 'hidden'))   
+        args.bias = bool(int(cf.get('model', 'bias')))
+        args.bn = bool(int(cf.get('model', 'bn')))
 
-    args.input_size = int(cf.get('args', 'input_size'))
-    args.output_size = int(cf.get('args', 'output_size'))
+    """ optimizer args """
+    args.optimizer = str(cf.get('optimizer', 'opt_method'))
+    args.lr = float(cf.get('optimizer', 'lr'))   
+    args.lr_scheduler = str(cf.get('optimizer', 'lr_scheduler'))
+    args.patience = int(cf.get('optimizer', 'patience'))
+    args.momentum = float(cf.get('optimizer', 'momentum'))
 
     """ ensemble args """
-    args.num_ens = int(cf.get('args', 'num_ens'))   
-    args.dataset_method = cf.get('args', 'dataset_method')   
-    args.dataset = str(cf.get('args', 'dataset')) 
+    if 'ens' in args.model_type:
+        args.num_ens = int(cf.get('ensemble', 'num_ens'))   
 
-    """ datasets """
-    args.batch = int(cf.get('args', 'batch'))   
-    args.train_size = int(cf.get('args', 'train_size'))   
-    args.test_size = int(cf.get('args', 'test_size'))   
-    args.make_train_test = bool(int(cf.get('args','make_train_test')))
+    """ dataset args """
+    args.dataset_method = cf.get('dataset', 'dataset_method')   
+    args.dataset = str(cf.get('dataset', 'dataset')) 
+    args.normalize = bool(int(cf.get('dataset', 'normalize')))
+    args.batch = int(cf.get('dataset', 'batch'))   
+    args.train_size = int(cf.get('dataset', 'train_size'))   
+    args.test_size = int(cf.get('dataset', 'test_size'))   
+    args.make_train_test = bool(int(cf.get('dataset','make_train_test')))
     if args.make_train_test:
-        args.test_prop = float(cf.get('args','test_prop'))
+        args.test_prop = float(cf.get('dataset','test_prop'))
 
-    """ multi gpu args """
-    args.gpu = int(cf.get('args', 'gpu'))   
-    args.multi_gpu = bool(int(cf.get('args', 'multi_gpu'))) 
+    """ gpu args """
+    args.gpu = int(cf.get('gpu', 'gpu'))   
+    args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu'))) 
     if args.multi_gpu:
-        args.expand_batch = bool(int(cf.get('args', 'expand_batch')))
-    args.pin_memory = bool(int(cf.get('args', 'pin_memory')))
-    args.non_blocking = bool(int(cf.get('args', 'non_blocking')))
+        args.expand_batch = bool(int(cf.get('gpu', 'expand_batch')))
+    args.pin_memory = bool(int(cf.get('gpu', 'pin_memory')))
+    args.non_blocking = bool(int(cf.get('gpu', 'non_blocking')))
 
     """ misc args """
-    args.seed = int(cf.get('args', 'seed'))   
-    args.save_model_every = int(cf.get('args', 'save_model_every')) 
-    args.test_every = int(cf.get('args', 'test_every')) 
+    args.seed = int(cf.get('misc', 'seed'))   
+    args.save_model_every = int(cf.get('misc', 'save_model_every')) 
+    args.test_every = int(cf.get('misc', 'test_every')) 
+
+    ### done gathering args, now setting them ###
 
     """ set model type """
     if args.model_type == 'vanilla':
         args.model = vanilla_nn
     elif args.model_type == 'pnn':
         args.model = prob_nn
+    elif args.model_type == 'cnn':
+        args.model = cnn
 
     """ set datasets """
     if args.dataset_method == 'plain':

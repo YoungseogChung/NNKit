@@ -6,6 +6,65 @@ from torch.nn.parameter import Parameter
 from torch.nn.utils import weight_norm
 from torch.autograd import Variable
 
+from argparse import Namespace
+
+import sys
+#sys.path.append('.')
+#import tables.CONV1D_TABLE as CONV1D_TABLE
+#import CONV1D_TABLE, FC_TABLE, temp_arch
+from models.tables import CONV1D_TABLE, FC_TABLE, temp_arch
+
+""" utilities """
+
+
+def decode_architecture(arch_str):
+    decoded_list = []
+    layers = [x.strip() for x in arch_str.split(';')]
+    for item in layers:
+        l = Namespace()
+
+        options_dic = {}
+        p_beg, p_end = item.index('('), item.index(')')
+
+        if item[:p_beg] == 'c1':
+            l.type = 'conv1d'
+            lookup_table = CONV1D_TABLE
+        elif item[:p_beg] == 'fc':
+            l.type = 'fc'
+            lookup_table = FC_TABLE
+
+        options_list = (item[p_beg+1:p_end]).split(',')
+        for o in options_list:
+            parsed_o = o.split()
+            if len(parsed_o) == 1:
+                options_dic[parsed_o[0]] = True
+            else:
+                if parsed_o[1].isnumeric(): 
+                    parsed_o[1] = int(parsed_o[1])
+                options_dic[parsed_o[0]] = parsed_o[1]
+
+        for k,v in lookup_table.items():
+            if k in options_dic.keys():
+                assign_value = options_dic[k]
+            else:
+                assign_value = v['default']
+            if assign_value is None:
+                raise ValueError('Must assign a value for {} in layer type {}'.format(k, l.type))
+            assign_key = v['key']
+            vars(l)[assign_key] = assign_value
+            
+            
+        #for k,v in options_dic.items():
+        #    assign_value = lookup_table[k]['default'] if v is None else v
+        #    if assign_value is None:
+        #        raise ValueError('Must assign a value for {} in layer type {}'.format(k, l.type))
+        #    assign_key = lookup_table[k]['key']
+        #    vars(l)[assign_key] = assign_value
+        decoded_list.append(l)
+    return decoded_list
+
+
+""" Implementation of layer types """
 
 class LinearLayer(nn.Module):
     def __init__(self, in_features, out_features,
@@ -49,7 +108,13 @@ class LinearLayer(nn.Module):
             init.constant_(self.bias, 0)
 
     def forward(self, input):
+        # concat channels and length of signal if input is from conv layer
+        if len(input.shape) > 2:
+            batch_size = input.shape[0]
+            input = input.view(batch_size, -1)
+
         out = F.linear(input, self.weight, self.bias)
+
         if self.bn:
             out = self.bn(out)
         if self.activation is not None:
@@ -57,15 +122,15 @@ class LinearLayer(nn.Module):
 
         return out
 
-
 class Conv1DLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=0,
-                 bias=False, use_bn=True, 
-                 pool_type=None, actv_type='relu'):
+                 stride, padding,
+                 bias, use_bn, 
+                 pool_type, pool_kernel_size, pool_stride,
+                 actv_type):
         super(Conv1DLayer, self).__init__()
 
-        """ conv1d  layer """
+        """ conv1d layer """
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -95,24 +160,47 @@ class Conv1DLayer(nn.Module):
         elif actv_type == 'selu':
             self.activation = nn.SELU(inplace=True)
         else:
-            raise ValueError
+            raise ValueError('actv_type not valid')
+
+        """ pool """
+        if pool_type == '':
+            self.pool = None
+        else:
+            # set pool kernel size
+            if pool_kernel_size is None:
+                self.pool_kernel_size = self.kernel_size
+            else:
+                self.pool_kernel_size = pool_kernel_size
+            # set pool stride
+            self.pool_stride = pool_stride
+
+            if pool_type == 'max':
+                self.pool = nn.MaxPool1d(self.pool_kernel_size, stride=self.pool_stride)
+            else:
+                raise ValueError('pool_type not valid')
 
     def reset_parameters(self, reset_indv_bias=None):
         # init.kaiming_uniform_(self.weight, a=math.sqrt(0)) # kaiming init
         if (reset_indv_bias is None) or (reset_indv_bias is False):
             init.xavier_uniform_(self.weight, gain=1.0)  # xavier init
-        if (reset_indv_bias is None) or ((self.bias is not None) and reset_indv_bias is True):
+        if (self.bias is not None) and (reset_indv_bias is True):
             init.constant_(self.bias, 0)
 
     def forward(self, input):
+
         out = F.conv1d(input=input, weight=self.weight, bias=self.bias, 
                        stride=self.stride, padding=self.padding)
         if self.bn:
             out = self.bn(out)
         if self.activation is not None:
             out = self.activation(out)
+        if self.pool is not None:
+            out = self.pool(out)
 
         return out
+
+
+""" Implementation of network architectures """
 
 class vanilla_nn(nn.Module):
     def __init__(self, input_size=1, output_size=1, bias=True,
@@ -122,6 +210,7 @@ class vanilla_nn(nn.Module):
 
         super(vanilla_nn, self).__init__()
         self.softmax = softmax
+        # TODO: make loss an option
         self.loss = nn.MSELoss()
 
         self.fcs = nn.ModuleList()
@@ -133,7 +222,6 @@ class vanilla_nn(nn.Module):
                                         use_bn=use_bn, actv_type=actv_type))
         self.fcs.append(LinearLayer(hidden_size, output_size, bias,
                                     use_bn=False, actv_type=None))
-
 
     def forward(self, X):
         for layer in self.fcs:
@@ -251,8 +339,6 @@ class prob_nn(nn.Module):
 
         return batch_loss
 
-
-
     def forward(self, X):
         for layer in self.fcs:
             X = layer(X)
@@ -268,4 +354,78 @@ class prob_nn(nn.Module):
         #pnn_out = torch.cat([out[:,:self.mean_dim], F.softplus(out[:,self.mean_dim:])], dim=1)
         return pnn_out
 
+
+class cnn(nn.Module):
+    def __init__(self, arch_str, in_channels, in_length, softmax=False):
+
+        super(cnn, self).__init__()
+
+        self.softmax = softmax
+        # TODO: make loss an option
+        self.loss = nn.MSELoss()
+
+        last_out_channels, last_out_length = in_channels, in_length
+        last_out_size = last_out_channels * last_out_length
+        print('input to conv1D of {} channels * {} signal length ({} values)'.format(
+              in_channels, in_length, last_out_size))
+
+        layer_list = decode_architecture(arch_str)
+        self.layers = nn.ModuleList()
+
+        dummy_tensor = torch.empty(3, in_channels, in_length)
+        for l in layer_list:
+            # adding conv1d layer 
+            if l.type == 'conv1d':
+                assert(last_out_channels is not None and last_out_length is not None)
+                conv_layer = Conv1DLayer(in_channels=last_out_channels, 
+                                         out_channels=l.out_channels,
+                                         kernel_size=l.kernel_size, stride=l.stride,
+                                         padding=l.padding,
+                                         bias=l.bias, use_bn=l.use_bn, pool_type=l.pool_type,
+                                         pool_kernel_size=l.pool_kernel_size,
+                                         pool_stride=l.pool_stride,
+                                         actv_type=l.actv_type)
+
+                self.layers.append(conv_layer)
+                dummy_tensor = conv_layer(dummy_tensor) 
+                out_shape = dummy_tensor.shape
+                assert out_shape[0] == 3
+                last_out_channels, last_out_length = out_shape[1], out_shape[2]
+                last_out_size = last_out_channels*last_out_length 
+                print('output of conv1D of {} channels * {} signal length ({} values)'.format(
+                      last_out_channels, last_out_length, last_out_size))
+
+
+            # adding a linear layer
+            elif l.type == 'fc':
+                dummy_tensor = dummy_tensor.view(3, -1)
+                lin_layer = LinearLayer(in_features=last_out_size, out_features=l.out_size, 
+                                        bias=l.bias, use_bn=l.use_bn, actv_type=l.actv_type)
+                self.layers.append(lin_layer)
+                dummy_tensor = lin_layer(dummy_tensor)
+                out_shape = dummy_tensor.shape
+                assert l.out_size == out_shape[1]
+                last_out_channels, last_out_length = None, None
+                last_out_size = l.out_size
+                print('output of linear layer of {} values'.format(last_out_size))
+
+        """ check network dimensions """
+        del dummy_tensor
+        import pdb; pdb.set_trace()
+
+    def forward(self, X):
+        for layer in self.layers:
+            X = layer(X)
+
+        if self.softmax:
+            out = F.softmax(X, dim=1)
+        else:
+            out = X
+
+        return out
+
+                                       
+if __name__=='__main__':
+    print(decode_architecture(temp_arch))
+            
 
