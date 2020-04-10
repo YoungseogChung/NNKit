@@ -3,3 +3,4 @@ logs/*
 *.swp
 *.pkl
 data/*/*
+notebooks/.ipynb_checkpoints/*
