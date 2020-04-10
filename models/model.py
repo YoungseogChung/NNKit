@@ -39,7 +39,7 @@ def decode_architecture(arch_str):
             if len(parsed_o) == 1:
                 options_dic[parsed_o[0]] = True
             else:
-                if parsed_o[1].isnumeric(): 
+                if parsed_o[1].isnumeric():
                     parsed_o[1] = int(parsed_o[1])
                 options_dic[parsed_o[0]] = parsed_o[1]
 
@@ -48,12 +48,12 @@ def decode_architecture(arch_str):
                 assign_value = options_dic[k]
             else:
                 assign_value = v['default']
-            if assign_value is None:
+            if assign_value == 'must specify':
                 raise ValueError('Must assign a value for {} in layer type {}'.format(k, l.type))
             assign_key = v['key']
             vars(l)[assign_key] = assign_value
-            
-            
+
+
         #for k,v in options_dic.items():
         #    assign_value = lookup_table[k]['default'] if v is None else v
         #    if assign_value is None:
@@ -100,12 +100,17 @@ class LinearLayer(nn.Module):
         else:
             raise ValueError
 
-    def reset_parameters(self, reset_indv_bias=None):
-        # init.kaiming_uniform_(self.weight, a=math.sqrt(0)) # kaiming init
-        if (reset_indv_bias is None) or (reset_indv_bias is False):
-            init.xavier_uniform_(self.weight, gain=1.0)  # xavier init
-        if (reset_indv_bias is None) or ((self.bias is not None) and reset_indv_bias is True):
-            init.constant_(self.bias, 0)
+    def reset_parameters(self):
+        # # init.kaiming_uniform_(self.weight, a=math.sqrt(0)) # kaiming init
+        # if (reset_indv_bias is None) or (reset_indv_bias is False):
+        #     init.xavier_uniform_(self.weight, gain=1.0)  # xavier init
+        # if (reset_indv_bias is None) or ((self.bias is not None) and reset_indv_bias is True):
+        #     init.constant_(self.bias, 0)
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input):
         # concat channels and length of signal if input is from conv layer
@@ -125,8 +130,8 @@ class LinearLayer(nn.Module):
 class Conv1DLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, padding,
-                 bias, use_bn, 
-                 pool_type, pool_kernel_size, pool_stride,
+                 bias, use_bn,
+                 pool_type, pool_kernel_size, pool_stride, pool_padding,
                  actv_type):
         super(Conv1DLayer, self).__init__()
 
@@ -163,40 +168,49 @@ class Conv1DLayer(nn.Module):
             raise ValueError('actv_type not valid')
 
         """ pool """
-        if pool_type == '':
+        if pool_type is None:
+            # not setting pool
             self.pool = None
         else:
-            # set pool kernel size
-            if pool_kernel_size is None:
-                self.pool_kernel_size = self.kernel_size
-            else:
-                self.pool_kernel_size = pool_kernel_size
-            # set pool stride
+            # if setting pool
+            self.pool_kernel_size = pool_kernel_size
             self.pool_stride = pool_stride
+            self.pool_padding = pool_padding
 
             if pool_type == 'max':
-                self.pool = nn.MaxPool1d(self.pool_kernel_size, stride=self.pool_stride)
+                # TODO: missing dilation and ceil_mode options
+                self.pool = nn.MaxPool1d(kernel_size=self.pool_kernel_size,
+                                         stride=self.pool_stride,
+                                         padding=self.pool_padding)
+            elif pool_type == 'avg':
+                # TODO: missing ceil_mode and count_include_pad options
+                self.pool = nn.AvgPool1d(kernel_size=self.pool_kernel_size,
+                                         stride=self.pool_stride,
+                                         padding=self.pool_padding)
             else:
                 raise ValueError('pool_type not valid')
 
-    def reset_parameters(self, reset_indv_bias=None):
-        # init.kaiming_uniform_(self.weight, a=math.sqrt(0)) # kaiming init
-        if (reset_indv_bias is None) or (reset_indv_bias is False):
-            init.xavier_uniform_(self.weight, gain=1.0)  # xavier init
-        if (self.bias is not None) and (reset_indv_bias is True):
-            init.constant_(self.bias, 0)
+    def reset_parameters(self):
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input):
 
-        out = F.conv1d(input=input, weight=self.weight, bias=self.bias, 
+        # 1. convolution
+        out = F.conv1d(input=input, weight=self.weight, bias=self.bias,
                        stride=self.stride, padding=self.padding)
-        if self.bn:
-            out = self.bn(out)
-        if self.activation is not None:
-            out = self.activation(out)
+        # 2. pooling
         if self.pool is not None:
             out = self.pool(out)
-
+        # 3. batch normalization
+        if self.bn:
+            out = self.bn(out)
+        # 4. activation
+        if self.activation is not None:
+            out = self.activation(out)
         return out
 
 
@@ -347,7 +361,7 @@ class prob_nn(nn.Module):
             out = F.softmax(X, dim=1)
         else:
             out = X
-        
+
         means = out[:,:self.mean_dim]
         variances = F.softplus(out[:,self.mean_dim:]) + 1e-8
         pnn_out = torch.cat([means, variances], dim=1)
@@ -357,7 +371,6 @@ class prob_nn(nn.Module):
 
 class cnn(nn.Module):
     def __init__(self, arch_str, in_channels, in_length, softmax=False):
-
         super(cnn, self).__init__()
 
         self.softmax = softmax
@@ -372,12 +385,13 @@ class cnn(nn.Module):
         layer_list = decode_architecture(arch_str)
         self.layers = nn.ModuleList()
 
-        dummy_tensor = torch.empty(3, in_channels, in_length)
+        DUMMY_BATCH = 3
+        dummy_tensor = torch.empty(DUMMY_BATCH, in_channels, in_length)
         for l in layer_list:
-            # adding conv1d layer 
+            # adding conv1d layer
             if l.type == 'conv1d':
                 assert(last_out_channels is not None and last_out_length is not None)
-                conv_layer = Conv1DLayer(in_channels=last_out_channels, 
+                conv_layer = Conv1DLayer(in_channels=last_out_channels,
                                          out_channels=l.out_channels,
                                          kernel_size=l.kernel_size, stride=l.stride,
                                          padding=l.padding,
@@ -387,19 +401,19 @@ class cnn(nn.Module):
                                          actv_type=l.actv_type)
 
                 self.layers.append(conv_layer)
-                dummy_tensor = conv_layer(dummy_tensor) 
+                dummy_tensor = conv_layer(dummy_tensor)
                 out_shape = dummy_tensor.shape
-                assert out_shape[0] == 3
+                assert out_shape[0] == DUMMY_BATCH
                 last_out_channels, last_out_length = out_shape[1], out_shape[2]
-                last_out_size = last_out_channels*last_out_length 
+                last_out_size = last_out_channels*last_out_length
                 print('output of conv1D of {} channels * {} signal length ({} values)'.format(
                       last_out_channels, last_out_length, last_out_size))
 
 
             # adding a linear layer
             elif l.type == 'fc':
-                dummy_tensor = dummy_tensor.view(3, -1)
-                lin_layer = LinearLayer(in_features=last_out_size, out_features=l.out_size, 
+                dummy_tensor = dummy_tensor.view(DUMMY_BATCH, -1)
+                lin_layer = LinearLayer(in_features=last_out_size, out_features=l.out_size,
                                         bias=l.bias, use_bn=l.use_bn, actv_type=l.actv_type)
                 self.layers.append(lin_layer)
                 dummy_tensor = lin_layer(dummy_tensor)
@@ -424,8 +438,8 @@ class cnn(nn.Module):
 
         return out
 
-                                       
+
 if __name__=='__main__':
     print(decode_architecture(temp_arch))
-            
+
 

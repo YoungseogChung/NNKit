@@ -5,22 +5,23 @@ fc(out 1, bias, bn, actv relu)
 """
 
 CONV1D_TABLE = {
-    'och': {'key': 'out_channels', 'default': None},
-    'ker': {'key': 'kernel_size', 'default': 5 },
-    'str': {'key': 'stride', 'default': 1},
-    'pad': {'key': 'padding', 'default': 0},
+    'och':  {'key': 'out_channels', 'default': 'must specify'},
+    'ker':  {'key': 'kernel_size', 'default': 5},
+    'str':  {'key': 'stride', 'default': 1},
+    'pad':  {'key': 'padding', 'default': 0},
     'bias': {'key': 'bias', 'default': False},
-    'bn': {'key': 'use_bn', 'default': False},
-    'pt': {'key': 'pool_type', 'default': ''},
-    'pk': {'key': 'pool_kernel_size', 'default': ''},
-    'ps': {'key': 'pool_stride', 'default': 1},
+    'bn':   {'key': 'use_bn', 'default': False},
+    'pt':   {'key': 'pool_type', 'default': None},
+    'pk':   {'key': 'pool_kernel_size', 'default': None},
+    'ps':   {'key': 'pool_stride', 'default': 1},
+    'pp':   {'key': 'pool_padding', 'default': 0},
     'actv': {'key': 'actv_type', 'default': 'relu'},
 
 }
 
 FC_TABLE = {
-    'out': {'key': 'out_size', 'default': None},
+    'out':  {'key': 'out_size', 'default': 'must specify'},
     'bias': {'key': 'bias', 'default': False},
-    'bn': {'key': 'use_bn', 'default': False},
-    'actv': {'key': 'actv_type', 'default': 'relu'} 
+    'bn':   {'key': 'use_bn', 'default': False},
+    'actv': {'key': 'actv_type', 'default': 'relu'},
 }

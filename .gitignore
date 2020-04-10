@@ -4,3 +4,4 @@ logs/*
 *.pkl
 data/*/*
 notebooks/.ipynb_checkpoints/*
+.idea/*
