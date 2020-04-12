@@ -28,6 +28,7 @@ def parse_exp_args(args_file):
           'bias'        : 1,    # 1 to use bias in network weights
           'bn'          : 1,    # 1 to use batch normalization
           ### optimizer args
+          'loss_factor' : 1,       # constant to multiply to loss
           'optimizer'   : 'adam',  # type of optimzier to use
           'lr'          : 1e-3,    # learning rate
           'lr_scheduler': 1,       # 1 to use adaptive lr scheduler
@@ -77,6 +78,7 @@ def parse_exp_args(args_file):
         args.bn = bool(int(cf.get('model', 'bn')))
 
     """ optimizer args """
+    args.loss_factor = float(cf.get('optimizer', 'loss_factor'))
     args.optimizer = str(cf.get('optimizer', 'opt_method'))
     args.lr = float(cf.get('optimizer', 'lr'))   
     args.lr_scheduler = str(cf.get('optimizer', 'lr_scheduler'))

@@ -151,7 +151,7 @@ def train_epoch(model, dataloader, optimizer, args):
 
         output = model(data)
 
-        loss = args.loss(output, target)
+        loss = args.loss_factor*args.loss(output, target)
         optimizer.zero_grad()
         epoch_loss += (loss.item())*data.shape[0]
         num_items += data.shape[0]
@@ -212,6 +212,10 @@ def train(args, model, logger):
 
         if ep % args.save_model_every == 0:
             logger.save_model(model, ep)
+
+        if optimizer.param_groups[0]['lr'] < 1e-7:
+            print('lr minimum reached, terminating training')
+            break
 
 def parse_run_args():
     parser = argparse.ArgumentParser()
