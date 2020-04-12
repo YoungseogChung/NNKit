@@ -15,7 +15,7 @@ CONV1D_TABLE = {
     'pk':   {'key': 'pool_kernel_size', 'default': None},
     'ps':   {'key': 'pool_stride', 'default': 1},
     'pp':   {'key': 'pool_padding', 'default': 0},
-    'actv': {'key': 'actv_type', 'default': 'relu'},
+    'actv': {'key': 'actv_type', 'default': None},
 
 }
 
@@ -23,5 +23,5 @@ FC_TABLE = {
     'out':  {'key': 'out_size', 'default': 'must specify'},
     'bias': {'key': 'bias', 'default': False},
     'bn':   {'key': 'use_bn', 'default': False},
-    'actv': {'key': 'actv_type', 'default': 'relu'},
+    'actv': {'key': 'actv_type', 'default': None},
 }

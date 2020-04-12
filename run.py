@@ -42,7 +42,7 @@ def create_dataloader(args, set_type):
                                       pin_memory = args.pin_memory)
         print('Making testing dataset loader')
         test_set = args.dataset_method(None, None, test_X, test_y)
-        test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
+        test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=False,
                                       num_workers = args.num_cpu - 2, 
                                       pin_memory = args.pin_memory)
 
@@ -63,11 +63,14 @@ def create_dataloader(args, set_type):
         if args.normalize:
             X_norm_stats = (args.X_mean, args.X_std)
             y_norm_stats = (args.y_mean, args.y_std)
+        else:
+            X_norm_stats, y_norm_stats = None, None
+
         test_set = args.dataset_method(args.test_X_path, args.test_y_path, 
                                        normalize = False,
                                        X_norm_stats = X_norm_stats,
                                        y_norm_stats = y_norm_stats)
-        data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=True,
+        data_loader = DataLoader(dataset=test_set, batch_size=len(test_set), shuffle=False,
                                 num_workers = args.num_cpu - 2, 
                                 pin_memory = args.pin_memory)
         
@@ -100,13 +103,18 @@ def load_model(args):
     model_used_args_path = os.path.join(model_used_path, 'args.txt') 
     model_used_args = parse_exp_args(model_used_args_path)
     print('Loading model from {}'.format(args.model_path))
-    loaded_model = model_used_args.model(input_size=model_used_args.input_size, 
-                                         output_size=model_used_args.output_size,
-                                         actv_type=model_used_args.actv,
-                                         num_layers=model_used_args.num_layers,
-                                         hidden_size=model_used_args.hidden, 
-                                         bias=model_used_args.bias, 
-                                         use_bn=model_used_args.bn)
+    if model_used_args.model_type in ['vanilla', 'pnn']:
+        loaded_model = model_used_args.model(input_size=model_used_args.input_size, 
+                                             output_size=model_used_args.output_size,
+                                             actv_type=model_used_args.actv,
+                                             num_layers=model_used_args.num_layers,
+                                             hidden_size=model_used_args.hidden, 
+                                             bias=model_used_args.bias, 
+                                             use_bn=model_used_args.bn)
+    elif model_used_args.model_type in ['cnn']:
+        loaded_model = model_used_args.model(arch_str=model_used_args.model_arch, 
+                                             in_channels=model_used_args.in_channels, 
+                                             in_length=model_used_args.in_length)
 
     # modify keys of loaded state dic
     loaded_state_dic = torch.load(args.model_path)
@@ -114,7 +122,7 @@ def load_model(args):
     if 'module' in list(loaded_state_dic.keys())[0]:
         mod_state_dic = OrderedDict()
         for k,v in loaded_state_dic.items(): 
-            mod_k = k.strip('module.')
+            mod_k = k.replace('module.', '')
             if mod_k not in loaded_model.state_dict():
                 print('skipping {}'.format(mod_k))
                 continue
@@ -136,6 +144,7 @@ def load_model(args):
 def train_epoch(model, dataloader, optimizer, args):
     model.train()
     epoch_loss = 0
+    num_items = 0
     for idx, (data, target) in tqdm(enumerate(dataloader)):
         data, target = data.to(args.device, non_blocking = args.non_blocking), \
                        target.to(args.device, non_blocking = args.non_blocking)
@@ -144,11 +153,12 @@ def train_epoch(model, dataloader, optimizer, args):
 
         loss = args.loss(output, target)
         optimizer.zero_grad()
-        epoch_loss += loss.item()
+        epoch_loss += (loss.item())*data.shape[0]
+        num_items += data.shape[0]
         loss.backward()
         optimizer.step()
 
-    return epoch_loss/(idx+1)
+    return epoch_loss/(num_items)
 
 def test_epoch(model, dataloader, args):
     model.eval()
@@ -156,24 +166,20 @@ def test_epoch(model, dataloader, args):
         len_pred = len(dataloader) * (dataloader.batch_size)
         out_pred = torch.FloatTensor(len_pred, args.output_size).fill_(0).to(args.device)
         loss_val = 0
+        num_items = 0
 
         for idx, (data,target) in enumerate(dataloader):
             data, target = data.to(args.device, non_blocking=args.non_blocking), \
                            target.to(args.device, non_blocking=args.non_blocking)
             output = model(data)
             loss = args.loss(output, target)
-            loss_val += loss.item()
+            loss_val += loss.item()*data.shape[0]
+            num_items += data.shape[0]
             out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
-        loss_mean = loss_val/(idx+1)
+        loss_mean = loss_val/(num_items)
         return loss_mean, out_pred
         
-def train(args, logger):
-
-    """ make model """
-    if args.load_model:
-        model = load_model(args)
-    else:
-        model = create_single_model(args)
+def train(args, model, logger):
 
     """ make dataloader """
     if args.make_train_test:
@@ -192,16 +198,17 @@ def train(args, logger):
 
     print('Starting training...')
     for ep in tqdm(range(args.parent_ep)):
-        ep_loss = train_epoch(model, train_loader, optimizer, args)
-        logger.save_loss(type_of_loss='train', loss_val=ep_loss, epoch_num=ep)
+        train_loss = train_epoch(model, train_loader, optimizer, args)
+        logger.save_loss(type_of_loss='train', loss_val=train_loss, epoch_num=ep)
+        lr_scheduler.step(train_loss)
         
         if ep % args.test_every == 0:
             print('Testing at epoch {}'.format(ep))
             test_loss, test_preds = test_epoch(model, test_loader, args)
             logger.save_loss(type_of_loss='test', loss_val=test_loss, epoch_num=ep)
             logger.save_preds(pred_tensor=test_preds, epoch_num=ep)
-            lr_scheduler.step(test_loss)
-            print('EP {0} train_loss {1:.3f}, test loss {2:.3f}'.format(ep, ep_loss, test_loss))
+            #lr_scheduler.step(test_loss)
+            print('EP {0} train_loss {1:.3f}, test loss {2:.3f}'.format(ep, train_loss, test_loss))
 
         if ep % args.save_model_every == 0:
             logger.save_model(model, ep)
@@ -292,6 +299,16 @@ def main():
     if args.model_type in ['vanilla', 'pnn']:
         print_model_specs(args)
 
+    """ check args """
+    print(args)
+    import pdb; pdb.set_trace()
+
+    """ make model """
+    if args.load_model:
+        model = load_model(args)
+    else:
+        model = create_single_model(args)
+
     """ check before launch """
     import pdb; pdb.set_trace()
 
@@ -300,7 +317,7 @@ def main():
     logger = Logger(args.id, args_file, args.log_dir, args)
 
     """ launch training """
-    train(args, logger)
+    train(args, model, logger)
 
 if __name__=='__main__':
     main()

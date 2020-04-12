@@ -1,3 +1,6 @@
+import sys, math
+from argparse import Namespace
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,9 +9,6 @@ from torch.nn.parameter import Parameter
 from torch.nn.utils import weight_norm
 from torch.autograd import Variable
 
-from argparse import Namespace
-
-import sys
 #sys.path.append('.')
 #import tables.CONV1D_TABLE as CONV1D_TABLE
 #import CONV1D_TABLE, FC_TABLE, temp_arch
@@ -97,6 +97,8 @@ class LinearLayer(nn.Module):
             self.activation = nn.ELU(inplace=True)
         elif actv_type == 'selu':
             self.activation = nn.SELU(inplace=True)
+        elif actv_type == 'tanh':
+            self.activation = nn.Tanh()
         else:
             raise ValueError
 
@@ -119,11 +121,14 @@ class LinearLayer(nn.Module):
             input = input.view(batch_size, -1)
 
         out = F.linear(input, self.weight, self.bias)
+        #print('after matmul\n', out)
 
         if self.bn:
             out = self.bn(out)
+        #print('after bn\n', out)
         if self.activation is not None:
             out = self.activation(out)
+        #print('after linear layer\n', out)
 
         return out
 
@@ -133,6 +138,7 @@ class Conv1DLayer(nn.Module):
                  bias, use_bn,
                  pool_type, pool_kernel_size, pool_stride, pool_padding,
                  actv_type):
+
         super(Conv1DLayer, self).__init__()
 
         """ conv1d layer """
@@ -164,6 +170,8 @@ class Conv1DLayer(nn.Module):
             self.activation = nn.ELU(inplace=True)
         elif actv_type == 'selu':
             self.activation = nn.SELU(inplace=True)
+        elif actv_type == 'tanh':
+            self.activation = nn.Tanh()
         else:
             raise ValueError('actv_type not valid')
 
@@ -202,15 +210,19 @@ class Conv1DLayer(nn.Module):
         # 1. convolution
         out = F.conv1d(input=input, weight=self.weight, bias=self.bias,
                        stride=self.stride, padding=self.padding)
+        #print('after conv kernel\n', out)
         # 2. pooling
         if self.pool is not None:
             out = self.pool(out)
+        #print('after pool\n', out)
         # 3. batch normalization
         if self.bn:
             out = self.bn(out)
+        #print('after bn\n', out)
         # 4. activation
         if self.activation is not None:
             out = self.activation(out)
+        #print('after conv layer\n', out)
         return out
 
 
@@ -398,6 +410,7 @@ class cnn(nn.Module):
                                          bias=l.bias, use_bn=l.use_bn, pool_type=l.pool_type,
                                          pool_kernel_size=l.pool_kernel_size,
                                          pool_stride=l.pool_stride,
+                                         pool_padding=l.pool_padding,
                                          actv_type=l.actv_type)
 
                 self.layers.append(conv_layer)
@@ -406,8 +419,8 @@ class cnn(nn.Module):
                 assert out_shape[0] == DUMMY_BATCH
                 last_out_channels, last_out_length = out_shape[1], out_shape[2]
                 last_out_size = last_out_channels*last_out_length
-                print('output of conv1D of {} channels * {} signal length ({} values)'.format(
-                      last_out_channels, last_out_length, last_out_size))
+                print('output of conv1D of {} channels * {} signal length ({} values), actv {}'.format(
+                      last_out_channels, last_out_length, last_out_size, l.actv_type))
 
 
             # adding a linear layer
@@ -421,11 +434,11 @@ class cnn(nn.Module):
                 assert l.out_size == out_shape[1]
                 last_out_channels, last_out_length = None, None
                 last_out_size = l.out_size
-                print('output of linear layer of {} values'.format(last_out_size))
+                print('output of linear layer of {} values, actv {}'.format(last_out_size, l.actv_type))
 
         """ check network dimensions """
         del dummy_tensor
-        import pdb; pdb.set_trace()
+        print(self.layers)
 
     def forward(self, X):
         for layer in self.layers:
