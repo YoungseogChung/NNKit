@@ -2,7 +2,6 @@ import os, sys
 import numpy as np
 
 def main(dataset, new_dataset, thresh):
-    import pdb; pdb.set_trace()
     data_path = dataset
     assert(os.path.exists(data_path))
 
@@ -16,11 +15,6 @@ def main(dataset, new_dataset, thresh):
 
     print(train_X.shape, train_y.shape)
     print(test_X.shape, test_y.shape)
-
-    #train_X = np.load('train_X_path')
-    #train_y = np.load('train_y_path')
-    #test_X = np.load('test_X_path')
-    #test_y = np.load('test_y_path')
 
     train_data = ('train', train_X, train_y)
     test_data = ('test', test_X, test_y)

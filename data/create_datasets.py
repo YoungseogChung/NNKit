@@ -10,16 +10,16 @@ from tqdm import tqdm
 # MODEL_TYPE = 'fc'
 MODEL_TYPE = 'conv'
 
-""" 2) history window for states """
-WINDOW_LEN = 100
-#WINDOW_SAMPLING_NUM = 5
-#WINDOW_SAMPLING_NUM = 10
-#WINDOW_SAMPLING_NUM = 20
-WINDOW_SAMPLING_NUM = WINDOW_LEN
-
-""" 3) prediction interval """
-PRED_INTERVAL = 100
-
+#""" 2) history window for states """
+#window_len = 100
+##window_sampling_num = 5
+##window_sampling_num = 10
+##window_sampling_num = 20
+#window_sampling_num = window_len
+#
+#""" 3) prediction interval """
+#pred_interval = 100
+#
 """ 4) all signals """
 SIGNAL_LIST = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli', 
                'efsvolume', 'ip', 'kappa', 'tribot', 'tritop', 
@@ -33,11 +33,11 @@ SIGNAL_LIST = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli',
 #               'efsvolume', 'ip', 'kappa', 'tribot', 'tritop', 
 
 """ 5) set action signals and type """
+#ACT_SIGNAL = ['pinj_15l', 'pinj_15r', 'pinj_21l', 'pinj_21r', 
+#              'pinj_30l', 'pinj_30r', 'pinj_33l', 'pinj_33r'] 
 ACT_SIGNAL = ['pinj']
 #ACT_TYPE = 'mean'
 ACT_TYPE = 'full'
-#ACT_SIGNAL = ['pinj_15l', 'pinj_15r', 'pinj_21l', 'pinj_21r', 
-#              'pinj_30l', 'pinj_30r', 'pinj_33l', 'pinj_33r'] 
 
 """ 6) set state signals """
 STATE_SIGNAL = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli', 
@@ -61,8 +61,8 @@ TARGET_SIGNAL = ['efsvolume']
 TARGET_TYPE = 'delta'
 
 
-if WINDOW_LEN % WINDOW_SAMPLING_NUM != 0:
-    print('Window sampling interval will not be exactly equispaced!')
+#if window_len % window_sampling_num != 0:
+#    print('Window sampling interval will not be exactly equispaced!')
 
 def find_tidx(target_t, t_array):
     t_array = t_array.flatten()
@@ -82,11 +82,14 @@ def find_tidx(target_t, t_array):
         target_t, t_array[0], t_array[-1]))
     return target_idx
 
-def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
+def make_prediction_data(dataset_list, act_idx, state_idx, target_idx, 
+                         window_len, window_sampling_num, pred_interval):
     sar_list = []
     X_list = []
     y_list = []
     for dataset in dataset_list:
+        outlier_shots = []
+        skip_number = 0
         for shot,v in tqdm(dataset.items()):
             times = v[0].flatten()
             if times.size == 0:
@@ -97,9 +100,9 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
             
             while True:
                 # set window begin and end times
-                window_end_time = window_beg_time + WINDOW_LEN
+                window_end_time = window_beg_time + window_len
                 # set time of prediction
-                pred_time = window_end_time + PRED_INTERVAL
+                pred_time = window_end_time + pred_interval
 
                 # if pred time is beyond the scope of current data, then done with this shot
                 if pred_time > times[-1]:
@@ -126,21 +129,36 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
                     orig_target = values[target_idx, window_end_idx-1]
                     target = values[target_idx, pred_time_idx]
                     target_delta = target-orig_target
+
+                    ### HACK ###
+                    if np.abs(target_delta) > 3.5:
+                        #print('{0:.2f}-{1:.2f}={2:.2f}'.format(float(target), float(orig_target),
+                        #                                      float(target_delta)))
+                        #print('in shot {0}: {1:.2f} to {2:.2f}\n'.format(shot, window_end_time, pred_time))
+
+                        if shot not in outlier_shots:
+                            outlier_shots.append(shot)
+                        skip_number += 1
+                        window_beg_time += 10
+                        continue
+                    ### HACK ###
+
                     #if orig_target == 0:
                     #    print(shot, orig_target, target_delta)
                     target_pdelta = target_delta/(orig_target + (np.sign(orig_target)*1e-8))
 
-                except:
+                except Exception as e:
+                    print(e)
                     print(shot, values.shape, window_beg_idx, window_end_idx, pred_time_idx)
                     import pdb; pdb.set_trace()
                     break
                     #raise RuntimeError
                 
-                if WINDOW_SAMPLING_NUM == WINDOW_LEN:
+                if window_sampling_num == window_len:
                     state_window_sample = state_window
                 else:
-                    state_window_sample = state_window[:,np.linspace(0, WINDOW_LEN-1, 
-                                                            WINDOW_SAMPLING_NUM).astype(int)]
+                    state_window_sample = state_window[:,np.linspace(0, window_len-1, 
+                                                            window_sampling_num).astype(int)]
 
                 # store transition tuples
                 curr_sasr = (state_window_sample, action, target)
@@ -152,10 +170,20 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
                     assert curr_X.shape[0] == 1
                 elif MODEL_TYPE == 'conv':
                     if action.shape[1] == state_window_sample.shape[1]:
+                        # just append the action array to last row
                         curr_X = np.concatenate([state_window_sample, action], axis=0)
                     elif action.shape[1] == 1:
+                        # make last row a constant action row
                         action_filled_ones = np.ones((1, state_window_sample.shape[1])) * action
                         curr_X = np.concatenate([state_window_sample, action_filled_ones], axis=0)
+                    else:
+                        # attach row of power horizontally on a new row, zero for all rest
+                        state_row_zeros = np.zeros((1, state_window_sample.shape[1]))
+                        state_window = np.concatenate([state_window_sample, state_row_zeros], axis=0)
+                        action_col_zeros = np.zeros((state_window_sample.shape[0], action.shape[1]))
+                        action_window = np.concatenate([action_col_zeros, action], axis=0)
+                        curr_X = np.concatenate([state_window, action_window],axis=1)
+
 
                 # store y
                 if TARGET_TYPE=='raw':
@@ -173,6 +201,8 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
                 y_list.append(curr_y)
 
                 window_beg_time += 10
+        print(outlier_shots)
+        print(skip_number)
     if MODEL_TYPE == 'fc':
         X_npy = np.concatenate(X_list, axis=0)
     elif MODEL_TYPE == 'conv':
@@ -182,7 +212,7 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx):
     return X_npy, y_npy, sar_list
 
 
-def main(data_dir):
+def main(data_dir, window_len, window_sampling_num, pred_interval):
 
     if os.path.exists(data_dir):
         raise RuntimeError('data directory already exists')
@@ -202,10 +232,12 @@ def main(data_dir):
     
     print('making train datasets')
     train_X, train_y, train_sar = make_prediction_data([train_dis, train_nondis], 
-                                                       act_idx, state_idx, target_idx)
+                                                    act_idx, state_idx, target_idx,
+                                                    window_len, window_sampling_num, pred_interval)
     print('making test datasets')
     test_X, test_y, test_sar = make_prediction_data([test_dis, test_nondis], 
-                                                    act_idx, state_idx, target_idx)
+                                                    act_idx, state_idx, target_idx,
+                                                    window_len, window_sampling_num, pred_interval)
     
     print('saving datasets')
     np.save(os.path.join(data_dir,'train_X.npy'), train_X)
@@ -215,7 +247,18 @@ def main(data_dir):
     pkl.dump(train_sar, open(os.path.join(data_dir, 'train_sar.pkl'), 'wb'))
     pkl.dump(test_sar, open(os.path.join(data_dir, 'test_sar.pkl'), 'wb'))
 
+    print('Done with {}\n'.format(data_dir))
 
 
 if __name__=='__main__':
-    main(sys.argv[1])
+    for window_len in [100, 150, 200, 250, 300, 350]:
+        for pred_interval in [50, 100, 150, 200, 250, 300, 350]:
+            window_sampling_num = window_len
+            if pred_interval > window_len:
+                continue
+            data_dir_name = 'full_pinj_{}_{}'.format(window_len, pred_interval)
+            main(data_dir_name, window_len, window_sampling_num, pred_interval)
+
+
+
+    #main(sys.argv[1])
