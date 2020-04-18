@@ -1,5 +1,5 @@
 [general]
-parent_ep = 1000
+parent_ep = 5000
 
 [model]
 model_type = cnn
@@ -18,25 +18,26 @@ arch =
  fc(out 1, bias)
 
 in_channels = 12
-in_length = 50
+in_length = 100
 output_size = 1
 
 [dataset]
-dataset = full_pinj_50_50
+dataset = delta_ip
 normalize = 0
-batch = 4096
+batch = 1024
 
 [optimizer]
-loss_factor = 100
+loss_factor = 1
 opt_method = adam
-lr = 0.005
+lr = 0.001
 lr_scheduler = 1
 patience = 15
 
 [gpu]
-gpu = 0
+gpu = 4
 multi_gpu = 0
 expand_batch = 1
+pin_memory = 0
 
 [misc]
 seed = 2048 

@@ -127,6 +127,8 @@ def load_model(args):
                 print('skipping {}'.format(mod_k))
                 continue
             mod_state_dic[mod_k] = loaded_state_dic[k]
+    else:
+        mod_state_dic = loaded_state_dic
         
     loaded_model.load_state_dict(mod_state_dic)
     del loaded_state_dic
