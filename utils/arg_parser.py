@@ -43,7 +43,6 @@ def parse_exp_args(args_file, use_gpu):
           'train_size'     : 100,      # train dataset size
           'test_size'      : 30,       # test dataset size
           ### gpu args
-          'multi_gpu'    : 1,   # 1 to use multi_gpus
           'pin_memory'   : 1,   # 1 to pin memory
           'non_blocking' : 1,   # 1 for non_blocking
           ### misc args
@@ -100,9 +99,8 @@ def parse_exp_args(args_file, use_gpu):
         args.test_prop = float(cf.get('dataset','test_prop'))
 
     """ gpu args """
-    args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu')))
-    if args.multi_gpu:
-        args.expand_batch = bool(int(cf.get('gpu', 'expand_batch')))
+    # args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu')))
+    args.expand_batch = bool(int(cf.get('gpu', 'expand_batch')))
     args.pin_memory = bool(int(cf.get('gpu', 'pin_memory')))
     args.non_blocking = bool(int(cf.get('gpu', 'non_blocking')))
 
@@ -149,7 +147,6 @@ def parse_exp_args(args_file, use_gpu):
         # virtual name of gpu devices
         args.gpu_name_list = [int(x) for x in range(num_use_gpu)]
 
-        # in case user messed up in options file
         if num_use_gpu == 1:
             args.multi_gpu = False
         else:
