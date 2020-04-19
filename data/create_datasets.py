@@ -46,7 +46,7 @@ STATE_SIGNAL = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli',
 
 """ 7) set target signals and type """
 #TARGET_SIGNAL = ['efsbetan']
-#TARGET_SIGNAL = ['R0']
+TARGET_SIGNAL = ['R0']
 #TARGET_SIGNAL = ['dssdenest']
 #TARGET_SIGNAL = ['ip']
 #TARGET_SIGNAL = ['kappa']
@@ -54,7 +54,7 @@ STATE_SIGNAL = ['R0', 'aminor', 'dssdenest', 'efsbetan', 'efsli',
 #TARGET_SIGNAL = ['aminor']
 #TARGET_SIGNAL = ['tribot']
 #TARGET_SIGNAL = ['tritop']
-TARGET_SIGNAL = ['efsvolume']
+#TARGET_SIGNAL = ['efsvolume']
 
 #TARGET_TYPE = 'raw'
 #TARGET_TYPE = 'pdelta'
@@ -130,18 +130,18 @@ def make_prediction_data(dataset_list, act_idx, state_idx, target_idx,
                     target = values[target_idx, pred_time_idx]
                     target_delta = target-orig_target
 
-                    ### HACK ###
-                    if np.abs(target_delta) > 3.5:
-                        #print('{0:.2f}-{1:.2f}={2:.2f}'.format(float(target), float(orig_target),
-                        #                                      float(target_delta)))
-                        #print('in shot {0}: {1:.2f} to {2:.2f}\n'.format(shot, window_end_time, pred_time))
+                    #### HACK ###
+                    #if np.abs(target_delta) > 3.5:
+                    #    #print('{0:.2f}-{1:.2f}={2:.2f}'.format(float(target), float(orig_target),
+                    #    #                                      float(target_delta)))
+                    #    #print('in shot {0}: {1:.2f} to {2:.2f}\n'.format(shot, window_end_time, pred_time))
 
-                        if shot not in outlier_shots:
-                            outlier_shots.append(shot)
-                        skip_number += 1
-                        window_beg_time += 10
-                        continue
-                    ### HACK ###
+                    #    if shot not in outlier_shots:
+                    #        outlier_shots.append(shot)
+                    #    skip_number += 1
+                    #    window_beg_time += 10
+                    #    continue
+                    #### HACK ###
 
                     #if orig_target == 0:
                     #    print(shot, orig_target, target_delta)
@@ -251,12 +251,16 @@ def main(data_dir, window_len, window_sampling_num, pred_interval):
 
 
 if __name__=='__main__':
-    for window_len in [100, 150, 200, 250, 300, 350]:
-        for pred_interval in [50, 100, 150, 200, 250, 300, 350]:
+    #for window_len in [50, 100, 150, 200, 250, 300]:
+    for window_len in [250, 300]:
+        #for pred_interval in [50, 100, 150, 200, 250, 300]:
+        for pred_interval in [50, 100, 150, 200, 250, 300]:
+            if window_len==250 and pred_interval<150:
+                continue
             window_sampling_num = window_len
             if pred_interval > window_len:
                 continue
-            data_dir_name = 'full_pinj_{}_{}'.format(window_len, pred_interval)
+            data_dir_name = '{}_{}_{}'.format(TARGET_SIGNAL[0], window_len, pred_interval)
             main(data_dir_name, window_len, window_sampling_num, pred_interval)
 
 

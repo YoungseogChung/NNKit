@@ -14,6 +14,7 @@ def get_gpu_name():
     except Exception as e:
         print(e)
         
+
 class Logger():
     def __init__(self, logger_id, args_file, log_dir, args):
         self.id = logger_id
@@ -63,32 +64,49 @@ class Logger():
         np.save(save_file, pred_tensor.detach().cpu().numpy())
 
 
-    
-
 class PlainDataset(Dataset):
-    def __init__(self, X_arr_path, y_arr_path, normalize, 
-                 X_norm_stats=None, y_norm_stats=None,     
+    def __init__(self, X_arr_path, y_arr_path, 
+                 normalize, filter_outlier=False, args=None,
+                 X_norm_stats=None, y_norm_stats=None, 
                  X_arr=None, y_arr=None):
+
+        # 1) load the data
         if X_arr_path is not None and X_arr is None:
             X_arr = np.load(X_arr_path)
             y_arr = np.load(y_arr_path)
+
+        # 2) filter outliers
+        if filter_outlier:
+            good_idx = self.filter_outlier(y_arr, args)
+            X_arr = X_arr[good_idx]
+            y_arr = y_arr[good_idx]
+        
+        # 3) normalize
         if normalize:
-            print('normalizing train features')
-            self.X_mean, self.X_std = np.mean(X_arr, axis=0), np.std(X_arr, axis=0)
+            print('Normalizing train features')
+            self.X_mean, self.X_std = np.mean(X_arr, axis=0), np.std(X_arr, axis=0)+1e-10
             self.y_mean, self.y_std = np.mean(y_arr, axis=0), np.std(y_arr, axis=0)
             X_arr = (X_arr - self.X_mean)/self.X_std
             y_arr = (y_arr - self.y_mean)/self.y_std
         if X_norm_stats is not None:
-            print('normalizing test features with training features stats')
+            print('Normalizing test features with training features stats')
             X_mean, X_std = X_norm_stats
             y_mean, y_std = y_norm_stats
             X_arr = (X_arr - X_mean)/X_std
             y_arr = (y_arr - y_mean)/y_std
+
+        # 4) load into tensors
         print('Loading data into datasets')
         self.X = torch.FloatTensor(X_arr)
         num_items = self.X.shape[0]
         self.y = torch.FloatTensor(y_arr).reshape(num_items,-1)
+
         print('Loaded {} datapoints'.format(num_items))
+
+    def filter_outlier(self, y_arr, args):
+        good_idx = ((y_arr>args.y_floor).flatten())*((y_arr<args.y_ceil).flatten())
+        print('Filtering {} points from total {} points'.format(y_arr.size-np.sum(good_idx), y_arr.size))
+        return good_idx
 
     def __len__(self):
         return self.y.shape[0]

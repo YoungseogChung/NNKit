@@ -18,10 +18,10 @@ def parse_exp_args(args_file, use_gpu):
           'ens_ep'      : 300,  # max number of epochs to train for ensemble
           'num_ens'     : 5,    # number of models in ensemble
           ### model args
+           # 'model_type'  : 'vanilla', # type of neural network to use
           'arch'  : '',   # declaring model architechture
           'load_model'  : 0,    # 1 to load a model
           'model_path'  : '',   # file path of model to load
-          'model_type'  : 'vanilla', # type of neural network to use
           'actv'        : 'relu',    # activation to use for each layer
           'num_layers'  : 5,    # number of layers in model
           'hidden'      : 10,   # hidden dimension of neural networks
@@ -31,17 +31,19 @@ def parse_exp_args(args_file, use_gpu):
           'loss_factor' : 1,       # constant to multiply to loss
           'optimizer'   : 'adam',  # type of optimzier to use
           'lr'          : 1e-3,    # learning rate
-          'lr_scheduler': 1,       # 1 to use adaptive lr scheduler
-          'patience'    : 1,       # patience parameter for lr scheduler
+          'lr_scheduler': 0,       # 1 to use adaptive lr scheduler
+          'patience'    : 10,       # patience parameter for lr scheduler
           'momentum'    : 0.9,     # momentum parameter for optimizer (SGD)
           ### dataset args
           'dataset_method' : 'plain',  # dataset class to use
-          'make_train_test': 0,        # 1 to make train test split
-          'dataset'        : 'data_1', # dataset data to use
-          'normalize'      : 1,        # 1 to normalize training features
+           # 'dataset'        : 'data_1', # dataset data to use
+           # 'normalize'      : 1,        # 1 to normalize training features
+          'y_floor'        : '-inf',   # set min of target to filter outlier
+          'y_ceil'         : 'inf',    # set max of target to filter outlier
           'batch'          : 16,       # training batch size
           'train_size'     : 100,      # train dataset size
           'test_size'      : 30,       # test dataset size
+          'make_train_test': 0,        # 1 to make train test split
           ### gpu args
           'pin_memory'   : 1,   # 1 to pin memory
           'non_blocking' : 1,   # 1 for non_blocking
@@ -59,11 +61,11 @@ def parse_exp_args(args_file, use_gpu):
     args.ens_ep = int(cf.get('general', 'ens_ep'))
 
     """ model args """
-    args.model_type = str(cf.get('model', 'model_type'))
+    args.model_type = str(cf.get('model', 'model_type')) #
     args.model_arch = str(cf.get('model', 'arch'))
     args.load_model = bool(int(cf.get('model', 'load_model')))
     args.model_path = str(cf.get('model', 'model_path'))
-    args.output_size = int(cf.get('model', 'output_size'))
+    args.output_size = int(cf.get('model', 'output_size')) #
     if len(args.model_arch) >= 1:
         args.in_channels = int(cf.get('model', 'in_channels'))
         args.in_length = int(cf.get('model', 'in_length'))
@@ -76,7 +78,7 @@ def parse_exp_args(args_file, use_gpu):
         args.bn = bool(int(cf.get('model', 'bn')))
 
     """ optimizer args """
-    args.loss_factor = float(cf.get('optimizer', 'loss_factor'))
+    args.loss_factor = float(cf.get('optimizer', 'loss_factor')) 
     args.optimizer = str(cf.get('optimizer', 'opt_method'))
     args.lr = float(cf.get('optimizer', 'lr'))
     args.lr_scheduler = str(cf.get('optimizer', 'lr_scheduler'))
@@ -89,8 +91,11 @@ def parse_exp_args(args_file, use_gpu):
 
     """ dataset args """
     args.dataset_method = cf.get('dataset', 'dataset_method')
-    args.dataset = str(cf.get('dataset', 'dataset'))
-    args.normalize = bool(int(cf.get('dataset', 'normalize')))
+    args.dataset = str(cf.get('dataset', 'dataset')) #
+    args.normalize = bool(int(cf.get('dataset', 'normalize'))) #
+    args.filter_outlier = bool(int(cf.get('dataset', 'filter_outlier'))) #
+    args.y_floor = float(cf.get('dataset', 'y_floor'))
+    args.y_ceil = float(cf.get('dataset', 'y_ceil'))
     args.batch = int(cf.get('dataset', 'batch'))
     args.train_size = int(cf.get('dataset', 'train_size'))
     args.test_size = int(cf.get('dataset', 'test_size'))
@@ -100,7 +105,7 @@ def parse_exp_args(args_file, use_gpu):
 
     """ gpu args """
     # args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu')))
-    args.expand_batch = bool(int(cf.get('gpu', 'expand_batch')))
+    args.expand_batch = bool(int(cf.get('gpu', 'expand_batch'))) #
     args.pin_memory = bool(int(cf.get('gpu', 'pin_memory')))
     args.non_blocking = bool(int(cf.get('gpu', 'non_blocking')))
 
@@ -127,10 +132,21 @@ def parse_exp_args(args_file, use_gpu):
         args.X_path = os.path.join('data', args.dataset,'X.npy')
         args.y_path = os.path.join('data', args.dataset, 'y.npy')
     else:
-        args.train_X_path = os.path.join('data', args.dataset, 'train_X.npy')
-        args.train_y_path = os.path.join('data', args.dataset, 'train_y.npy')
-        args.test_X_path = os.path.join('data', args.dataset, 'test_X.npy')
-        args.test_y_path = os.path.join('data', args.dataset, 'test_y.npy')
+        target_setting = args.dataset.split('_')[0]
+        time_setting = '_'.join(args.dataset.split('_')[-2:])
+
+        X_dir = os.path.join('data','common_X',time_setting)
+        y_dir = os.path.join('data', target_setting, args.dataset)
+
+        args.train_X_path = os.path.join(X_dir, 'train_X.npy')
+        args.train_y_path = os.path.join(y_dir, 'train_y.npy')
+        args.test_X_path = os.path.join(X_dir, 'test_X.npy')
+        args.test_y_path = os.path.join(y_dir, 'test_y.npy')
+
+        #args.train_X_path = os.path.join('data', args.dataset, 'train_X.npy')
+        #args.train_y_path = os.path.join('data', args.dataset, 'train_y.npy')
+        #args.test_X_path = os.path.join('data', args.dataset, 'test_X.npy')
+        #args.test_y_path = os.path.join('data', args.dataset, 'test_y.npy')
 
     """ set data params"""
     args.train_data_params = {'batch_size': args.batch, 'shuffle': True}

@@ -15,10 +15,12 @@ def parse_run_args():
                         help='options file to use')
     parser.add_argument('--id', type=str,
                         help='ID of current experiment')
-    parser.add_argument('--log_dir', type=str, default='logs',
-                        help='ID of current experiment')
     parser.add_argument('--use_gpu', type=str, default=None,
                         help='list gpus you only want to use')
+    parser.add_argument('--debug', type=int, default=0,
+                        help='1 to run in debug mode')
+    parser.add_argument('--log_dir', type=str, default='logs',
+                        help='ID of current experiment')
     run_args = parser.parse_args()
 
     return run_args
@@ -40,7 +42,12 @@ from torch.utils.data import DataLoader, Dataset
 from utils.arg_parser import parse_exp_args
 from utils.common import Logger
 
+
+DIV = ('='*80)+'\n'+('='*80)
+
+
 def create_dataloader(args, set_type):
+    print(DIV)
     if args.make_train_test:
         X_arr = np.load(args.X_path)
         y_arr = np.load(args.y_path)
@@ -57,13 +64,40 @@ def create_dataloader(args, set_type):
         test_y = y_arr[test_idxs]
 
         print('Making training dataset loader')
-        train_set = args.dataset_method(None, None, train_X, train_y)
+        train_set = args.dataset_method(X_arr_path=None, y_arr_path=None,
+                                        normalize=args.normalize,
+                                        filter_outlier=args.filter_outlier,
+                                        args=args,
+                                        X_arr=train_X, 
+                                        y_arr=train_y)
+        if args.normalize:
+            args.X_mean, args.X_std = train_set.X_mean, train_set.X_std
+            args.y_mean, args.y_std = train_set.y_mean, train_set.y_std
+            save_path = os.path.join(args.log_dir, args.id)
+            np.save(os.path.join(save_path, 'train_X_mean.npy'), args.X_mean)
+            np.save(os.path.join(save_path, 'train_X_std.npy'), args.X_std)
+            np.save(os.path.join(save_path, 'train_y_mean.npy'), args.y_mean)
+            np.save(os.path.join(save_path, 'train_y_std.npy'), args.y_std)
+
+            X_norm_stats = (args.X_mean, args.X_std)
+            y_norm_stats = (args.y_mean, args.y_std)
+        else:
+            X_norm_stats, y_norm_stats = None, None
+
         train_data_loader = DataLoader(dataset=train_set, batch_size=args.batch,
                                        shuffle=True,
                                        num_workers = args.num_cpu - 2,
                                        pin_memory = args.pin_memory)
+
         print('Making testing dataset loader')
-        test_set = args.dataset_method(None, None, test_X, test_y)
+        test_set = args.dataset_method(X_arr_path=None, y_arr_path=None,
+                                       normalize=False,
+                                       filter_outlier=args.filter_outlier,
+                                       args=args,
+                                       X_norm_stats=X_norm_stats,
+                                       y_norm_stats=y_norm_stats,
+                                       X_arr=test_X, 
+                                       y_arr=test_y)
         test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set),
                                       shuffle=False,
                                       num_workers = args.num_cpu - 2,
@@ -73,8 +107,11 @@ def create_dataloader(args, set_type):
 
     if set_type == 'train':
         print('Making training dataset loader')
-        train_set = args.dataset_method(args.train_X_path, args.train_y_path,
-                                        normalize=args.normalize)
+        train_set = args.dataset_method(X_arr_path=args.train_X_path, 
+                                        y_arr_path=args.train_y_path,
+                                        normalize=args.normalize, 
+                                        filter_outlier=args.filter_outlier,
+                                        args=args)
         if args.normalize:
             args.X_mean, args.X_std = train_set.X_mean, train_set.X_std
             args.y_mean, args.y_std = train_set.y_mean, train_set.y_std
@@ -83,10 +120,12 @@ def create_dataloader(args, set_type):
             np.save(os.path.join(save_path, 'train_X_std.npy'), args.X_std)
             np.save(os.path.join(save_path, 'train_y_mean.npy'), args.y_mean)
             np.save(os.path.join(save_path, 'train_y_std.npy'), args.y_std)
+
         data_loader = DataLoader(dataset=train_set, batch_size=args.batch,
                                  shuffle=True,
-                                 num_workers = args.num_cpu - 2,
-                                 pin_memory = args.pin_memory)
+                                 num_workers=args.num_cpu - 2,
+                                 pin_memory=args.pin_memory)
+
     elif set_type == 'test':
         print('Making testing dataset loader')
         if args.normalize:
@@ -95,10 +134,14 @@ def create_dataloader(args, set_type):
         else:
             X_norm_stats, y_norm_stats = None, None
 
-        test_set = args.dataset_method(args.test_X_path, args.test_y_path,
+        test_set = args.dataset_method(X_arr_path=args.test_X_path, 
+                                       y_arr_path=args.test_y_path,
                                        normalize = False,
-                                       X_norm_stats = X_norm_stats,
-                                       y_norm_stats = y_norm_stats)
+                                       filter_outlier=args.filter_outlier,
+                                       args=args,
+                                       X_norm_stats=X_norm_stats,
+                                       y_norm_stats=y_norm_stats)
+
         data_loader = DataLoader(dataset=test_set, batch_size=len(test_set),
                                  shuffle=False,
                                  num_workers = args.num_cpu - 2,
@@ -106,7 +149,9 @@ def create_dataloader(args, set_type):
 
     return data_loader
 
+
 def create_single_model(args):
+    print(DIV)
     print('Creating model')
     if len(args.model_arch) < 1:
         model = args.model(input_size=args.input_size,
@@ -131,6 +176,7 @@ def create_single_model(args):
     return model
 
 def load_model(args):
+    print(DIV)
     model_used_path = '/'.join((args.model_path).split('/')[:-1])
     model_used_args_path = os.path.join(model_used_path, 'args.txt')
     model_used_args = parse_exp_args(model_used_args_path)
@@ -175,6 +221,7 @@ def load_model(args):
 
     return loaded_model
 
+
 def train_epoch(model, dataloader, optimizer, args):
     model.train()
     epoch_loss = 0
@@ -194,6 +241,7 @@ def train_epoch(model, dataloader, optimizer, args):
 
     return epoch_loss/(num_items)
 
+
 def test_epoch(model, dataloader, args):
     model.eval()
     with torch.no_grad():
@@ -202,7 +250,7 @@ def test_epoch(model, dataloader, args):
         loss_val = 0
         num_items = 0
 
-        for idx, (data,target) in enumerate(dataloader):
+        for idx, (data,target) in tqdm(enumerate(dataloader)):
             data, target = data.to(args.device, non_blocking=args.non_blocking), \
                            target.to(args.device, non_blocking=args.non_blocking)
             output = model(data)
@@ -212,6 +260,7 @@ def test_epoch(model, dataloader, args):
             out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
         loss_mean = loss_val/(num_items)
         return loss_mean, out_pred
+
 
 def train(args, model, logger):
 
@@ -259,6 +308,7 @@ def set_seeds(seed):
 
 
 def parse_gpu_options(args):
+    print(DIV)
     CPU_COUNT = multiprocessing.cpu_count()
     GPU_COUNT = torch.cuda.device_count()
     print('CPU cores: {}, GPU count: {}'.format(CPU_COUNT, GPU_COUNT))
@@ -291,6 +341,7 @@ def parse_gpu_options(args):
 
 
 def print_model_specs(args):
+    print(DIV)
     print(('Launching training with {} model with\n' 
            '  Input size: {}\n'
            '  Output size: {}\n'
@@ -305,34 +356,33 @@ def print_model_specs(args):
 
 
 def main():
-    """ get run args """
+    """ 1. get run args """
     run_args = parse_run_args()
-    import pdb;
-    pdb.set_trace()
+    if bool(run_args.debug):
+        import pudb; pudb.set_trace()
 
-    """ get exp args and merge args"""
+    """ 2. get exp args and merge args"""
     args_file = run_args.o
     use_gpu = run_args.use_gpu
     args = parse_exp_args(args_file, use_gpu)
 
     for k,v in vars(run_args).items():
         vars(args)[k] = v
-    #print(args)
 
-    import pdb; pdb.set_trace()
-    """ set seeds """
+    """ 3. set seeds """
     set_seeds(args.seed)
 
-    """ multi GPU """
+    """ 4. GPU args """
     args = parse_gpu_options(args)
 
-    """ print model type """
+    """ 5. print model type """
     if args.model_type in ['vanilla', 'pnn']:
         print_model_specs(args)
 
     """ check args """
+    print(DIV)
     print(args)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
     """ make model """
     if args.load_model:
@@ -344,6 +394,7 @@ def main():
     import pdb; pdb.set_trace()
 
     """ make logger """
+    print(DIV)
     print('Creating logger for log dir {}/{}'.format(args.log_dir, args.id))
     logger = Logger(args.id, args_file, args.log_dir, args)
 
