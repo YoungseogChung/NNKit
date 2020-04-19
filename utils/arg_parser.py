@@ -8,7 +8,7 @@ from models.model import vanilla_nn, prob_nn, cnn
 from utils.common import PlainDataset
 
 
-def parse_exp_args(args_file):
+def parse_exp_args(args_file, use_gpu):
     cf = cfp.ConfigParser()
 
     cf["DEFAULT"] = \
@@ -17,9 +17,9 @@ def parse_exp_args(args_file):
           'parent_ep'   : 1000, # max number of epochs to train for parent model
           'ens_ep'      : 300,  # max number of epochs to train for ensemble
           'num_ens'     : 5,    # number of models in ensemble
-          ### model args 
+          ### model args
           'arch'  : '',   # declaring model architechture
-          'load_model'  : 0,    # 1 to load a model 
+          'load_model'  : 0,    # 1 to load a model
           'model_path'  : '',   # file path of model to load
           'model_type'  : 'vanilla', # type of neural network to use
           'actv'        : 'relu',    # activation to use for each layer
@@ -38,14 +38,13 @@ def parse_exp_args(args_file):
           'dataset_method' : 'plain',  # dataset class to use
           'make_train_test': 0,        # 1 to make train test split
           'dataset'        : 'data_1', # dataset data to use
-          'normalize'      : 1,        # 1 to normalize training features 
+          'normalize'      : 1,        # 1 to normalize training features
           'batch'          : 16,       # training batch size
           'train_size'     : 100,      # train dataset size
           'test_size'      : 30,       # test dataset size
           ### gpu args
-          'gpu'          : 0,   # set which cuda device to use
           'multi_gpu'    : 1,   # 1 to use multi_gpus
-          'pin_memory'   : 1,   # 1 to pin memory 
+          'pin_memory'   : 1,   # 1 to pin memory
           'non_blocking' : 1,   # 1 for non_blocking
           ### misc args
           'seed'             : 1234,  # Random seed
@@ -57,61 +56,60 @@ def parse_exp_args(args_file):
 
     args = Namespace()
     """ general args """
-    args.parent_ep = int(cf.get('general', 'parent_ep'))   
-    args.ens_ep = int(cf.get('general', 'ens_ep'))   
+    args.parent_ep = int(cf.get('general', 'parent_ep'))
+    args.ens_ep = int(cf.get('general', 'ens_ep'))
 
     """ model args """
-    args.model_type = str(cf.get('model', 'model_type'))   
+    args.model_type = str(cf.get('model', 'model_type'))
     args.model_arch = str(cf.get('model', 'arch'))
     args.load_model = bool(int(cf.get('model', 'load_model')))
+    args.model_path = str(cf.get('model', 'model_path'))
     args.output_size = int(cf.get('model', 'output_size'))
     if len(args.model_arch) >= 1:
         args.in_channels = int(cf.get('model', 'in_channels'))
         args.in_length = int(cf.get('model', 'in_length'))
     if len(args.model_arch) < 1:
         args.input_size = int(cf.get('model', 'input_size'))
-        args.model_path = str(cf.get('model', 'model_path'))
         args.actv = str(cf.get('model', 'actv'))
-        args.num_layers = int(cf.get('model', 'num_layers'))   
-        args.hidden = int(cf.get('model', 'hidden'))   
+        args.num_layers = int(cf.get('model', 'num_layers'))
+        args.hidden = int(cf.get('model', 'hidden'))
         args.bias = bool(int(cf.get('model', 'bias')))
         args.bn = bool(int(cf.get('model', 'bn')))
 
     """ optimizer args """
     args.loss_factor = float(cf.get('optimizer', 'loss_factor'))
     args.optimizer = str(cf.get('optimizer', 'opt_method'))
-    args.lr = float(cf.get('optimizer', 'lr'))   
+    args.lr = float(cf.get('optimizer', 'lr'))
     args.lr_scheduler = str(cf.get('optimizer', 'lr_scheduler'))
     args.patience = int(cf.get('optimizer', 'patience'))
     args.momentum = float(cf.get('optimizer', 'momentum'))
 
     """ ensemble args """
     if 'ens' in args.model_type:
-        args.num_ens = int(cf.get('ensemble', 'num_ens'))   
+        args.num_ens = int(cf.get('ensemble', 'num_ens'))
 
     """ dataset args """
-    args.dataset_method = cf.get('dataset', 'dataset_method')   
-    args.dataset = str(cf.get('dataset', 'dataset')) 
+    args.dataset_method = cf.get('dataset', 'dataset_method')
+    args.dataset = str(cf.get('dataset', 'dataset'))
     args.normalize = bool(int(cf.get('dataset', 'normalize')))
-    args.batch = int(cf.get('dataset', 'batch'))   
-    args.train_size = int(cf.get('dataset', 'train_size'))   
-    args.test_size = int(cf.get('dataset', 'test_size'))   
+    args.batch = int(cf.get('dataset', 'batch'))
+    args.train_size = int(cf.get('dataset', 'train_size'))
+    args.test_size = int(cf.get('dataset', 'test_size'))
     args.make_train_test = bool(int(cf.get('dataset','make_train_test')))
     if args.make_train_test:
         args.test_prop = float(cf.get('dataset','test_prop'))
 
     """ gpu args """
-    args.gpu = int(cf.get('gpu', 'gpu'))   
-    args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu'))) 
+    args.multi_gpu = bool(int(cf.get('gpu', 'multi_gpu')))
     if args.multi_gpu:
         args.expand_batch = bool(int(cf.get('gpu', 'expand_batch')))
     args.pin_memory = bool(int(cf.get('gpu', 'pin_memory')))
     args.non_blocking = bool(int(cf.get('gpu', 'non_blocking')))
 
     """ misc args """
-    args.seed = int(cf.get('misc', 'seed'))   
-    args.save_model_every = int(cf.get('misc', 'save_model_every')) 
-    args.test_every = int(cf.get('misc', 'test_every')) 
+    args.seed = int(cf.get('misc', 'seed'))
+    args.save_model_every = int(cf.get('misc', 'save_model_every'))
+    args.test_every = int(cf.get('misc', 'test_every'))
 
     ### done gathering args, now setting them ###
 
@@ -126,7 +124,7 @@ def parse_exp_args(args_file):
     """ set datasets """
     if args.dataset_method == 'plain':
         args.dataset_method = PlainDataset
-    
+
     if args.make_train_test:
         args.X_path = os.path.join('data', args.dataset,'X.npy')
         args.y_path = os.path.join('data', args.dataset, 'y.npy')
@@ -135,15 +133,30 @@ def parse_exp_args(args_file):
         args.train_y_path = os.path.join('data', args.dataset, 'train_y.npy')
         args.test_X_path = os.path.join('data', args.dataset, 'test_X.npy')
         args.test_y_path = os.path.join('data', args.dataset, 'test_y.npy')
-        
+
     """ set data params"""
     args.train_data_params = {'batch_size': args.batch, 'shuffle': True}
     args.test_data_params = {'batch_size': args.batch, 'shuffle': False}
 
     """ Set device """
-    cuda_device = "cuda:{}".format(args.gpu)
     use_cuda = torch.cuda.is_available()
-    device = torch.device(cuda_device if use_cuda else "cpu")
+    if use_gpu is not None:
+        # args.gpu_list = [int(x) for x in (use_gpu.split(','))]
+        # cuda_device = 'cuda:{}'.format(args.gpu_list[0])
+        num_use_gpu = len(use_gpu.split(','))
+        # actual physical gpu devices
+        args.gpu_device_list = [int(x) for x in (use_gpu.split(','))]
+        # virtual name of gpu devices
+        args.gpu_name_list = [int(x) for x in range(num_use_gpu)]
+
+        # in case user messed up in options file
+        if num_use_gpu == 1:
+            args.multi_gpu = False
+        else:
+            args.multi_gpu = True
+
+    cuda_device = 'cuda:0'
+    device = torch.device(cuda_device if use_cuda else 'cpu')
     args.device = device
 
     return args
