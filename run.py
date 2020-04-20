@@ -5,6 +5,7 @@ import argparse
 from tqdm import tqdm
 from copy import deepcopy
 from collections import OrderedDict
+from sklearn.metrics import explained_variance_score as ev
 
 ### BEGIN: set visible gpu devices ###
 def parse_run_args():
@@ -142,7 +143,7 @@ def create_dataloader(args, set_type):
                                        X_norm_stats=X_norm_stats,
                                        y_norm_stats=y_norm_stats)
 
-        data_loader = DataLoader(dataset=test_set, batch_size=len(test_set),
+        data_loader = DataLoader(dataset=test_set, batch_size=args.batch, #len(test_set),
                                  shuffle=False,
                                  num_workers = args.num_cpu - 2,
                                  pin_memory = args.pin_memory)
@@ -245,8 +246,9 @@ def train_epoch(model, dataloader, optimizer, args):
 def test_epoch(model, dataloader, args):
     model.eval()
     with torch.no_grad():
-        len_pred = len(dataloader) * (dataloader.batch_size)
-        out_pred = torch.FloatTensor(len_pred, args.output_size).fill_(0).to(args.device)
+        len_pred = len(dataloader.dataset)
+        #out_pred = torch.FloatTensor(len_pred, args.output_size).fill_(0).to(args.device)
+        out_pred = torch.FloatTensor(len_pred, args.output_size).fill_(0)
         loss_val = 0
         num_items = 0
 
@@ -255,11 +257,14 @@ def test_epoch(model, dataloader, args):
                            target.to(args.device, non_blocking=args.non_blocking)
             output = model(data)
             loss = args.loss(output, target)
-            loss_val += loss.item()*data.shape[0]
-            num_items += data.shape[0]
-            out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
+            loss_val += loss.item()*output.size(0)
+            #out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.cpu().data
+            out_pred[num_items : num_items+output.size(0)] = output.cpu().data
+            num_items += output.size(0)
+            #out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
+        exp_var = ev(dataloader.dataset.y, out_pred)
         loss_mean = loss_val/(num_items)
-        return loss_mean, out_pred
+        return (loss_mean, exp_var), out_pred
 
 
 def train(args, model, logger):
@@ -291,7 +296,8 @@ def train(args, model, logger):
             logger.save_loss(type_of_loss='test', loss_val=test_loss, epoch_num=ep)
             logger.save_preds(pred_tensor=test_preds, epoch_num=ep)
             #lr_scheduler.step(test_loss)
-            print('EP {0} train_loss {1:.3f}, test loss {2:.3f}'.format(ep, train_loss, test_loss))
+            print('EP {0} train_loss {1:.3f}, test loss {2:.3f}, test exp_var {3:.3f}'.format(
+                                    ep, train_loss, test_loss[0], test_loss[1]))
 
         if ep % args.save_model_every == 0:
             logger.save_model(model, ep)
