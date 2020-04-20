@@ -34,11 +34,11 @@ patience = 10
 
 
 [dataset]
-dataset = R0_200_100
+dataset = aminor_200_100
 normalize = 1
 filter_outlier = 1
-y_ceil = 0.13258
-y_floor = -0.14309
+y_ceil = 0.09774
+y_floor = -0.11285
 batch = 1024
 
 

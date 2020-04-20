@@ -34,11 +34,11 @@ patience = 10
 
 
 [dataset]
-dataset = aminor_200_50
+dataset = aminor_150_100
 normalize = 1
 filter_outlier = 1
-y_ceil = 0.08344
-y_floor = -0.08082
+y_ceil = 0.09606
+y_floor = -0.11286
 batch = 1024
 
 
@@ -48,6 +48,6 @@ pin_memory = 0
 
 
 [misc]
-seed = 2048 
+seed = 2048
 save_model_every = 10
 test_every = 10
