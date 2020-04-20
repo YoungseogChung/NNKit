@@ -38,7 +38,7 @@ dataset = R0_150_150
 normalize = 1
 filter_outlier = 1
 y_ceil = 0.12782
-y_floor = 0.15614
+y_floor = -0.15614
 batch = 1024
 
 
@@ -49,5 +49,5 @@ pin_memory = 0
 
 [misc]
 seed = 2048
-save_model_every = 10
+save_model_every = 50
 test_every = 10

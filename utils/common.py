@@ -104,7 +104,6 @@ class PlainDataset(Dataset):
         print('Loaded {} datapoints'.format(num_items))
 
     def filter_outlier(self, y_arr, args):
-        import pudb; pudb.set_trace()
         percent = 0.01
         y_ceil = np.percentile(y_arr, 100-percent, axis=0)
         y_floor = np.percentile(y_arr, percent, axis=0)
