@@ -21,7 +21,7 @@ arch =
  fc(out 1, bias)
 
 in_channels = 12
-in_length = 400
+in_length = 250
 output_size = 1
 
 
@@ -34,11 +34,11 @@ patience = 10
 
 
 [dataset]
-dataset = R0_250_150
+dataset = R0_150_100
 normalize = 1
 filter_outlier = 1
-y_ceil = 0.12772
-y_floor = -0.16619
+y_ceil = 0.13262
+y_floor = -0.14306
 batch = 1024
 
 
@@ -48,6 +48,6 @@ pin_memory = 0
 
 
 [misc]
-seed = 2048 
+seed = 2048
 save_model_every = 10
 test_every = 10

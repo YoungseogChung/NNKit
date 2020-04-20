@@ -39,7 +39,7 @@ normalize = 1
 filter_outlier = 1
 y_ceil = 0.15587
 y_floor = -0.17698
-batch = 256
+batch = 1024
 
 
 [gpu]
