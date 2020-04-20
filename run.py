@@ -14,8 +14,10 @@ def parse_run_args():
     #                    help='dir containing options files')
     parser.add_argument('--o', type=str,
                         help='options file to use')
-    parser.add_argument('--id', type=str,
+    parser.add_argument('--id', type=str, default=None,
                         help='ID of current experiment')
+    parser.add_argument('--sig', type=str, default=None,
+                        help='target signal for current experiment')
     parser.add_argument('--use_gpu', type=str, default=None,
                         help='list gpus you only want to use')
     parser.add_argument('--debug', type=int, default=0,
@@ -23,6 +25,9 @@ def parse_run_args():
     parser.add_argument('--log_dir', type=str, default='logs',
                         help='ID of current experiment')
     run_args = parser.parse_args()
+
+    if run_args.sig is not None and run_args.id is None:
+        run_args.id = '_'.join([run_args.sig, run_args.o.split('/')[-1].replace('.txt','')])
 
     return run_args
 
@@ -368,9 +373,11 @@ def main():
         import pudb; pudb.set_trace()
 
     """ 2. get exp args and merge args"""
-    args_file = run_args.o
-    use_gpu = run_args.use_gpu
-    args = parse_exp_args(args_file, use_gpu)
+    #args_file = run_args.o
+    #use_gpu = run_args.use_gpu
+    #use_signal = run_args.sig
+    args = parse_exp_args(run_args)
+    #args_file, use_gpu, use_signal)
 
     for k,v in vars(run_args).items():
         vars(args)[k] = v
@@ -397,12 +404,12 @@ def main():
         model = create_single_model(args)
 
     """ check before launch """
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
 
     """ make logger """
     print(DIV)
     print('Creating logger for log dir {}/{}'.format(args.log_dir, args.id))
-    logger = Logger(args.id, args_file, args.log_dir, args)
+    logger = Logger(args.id, args.o, args.log_dir, args)
 
     """ launch training """
     train(args, model, logger)

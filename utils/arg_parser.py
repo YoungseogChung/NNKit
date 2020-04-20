@@ -8,7 +8,12 @@ from models.model import vanilla_nn, prob_nn, cnn
 from utils.common import PlainDataset
 
 
-def parse_exp_args(args_file, use_gpu):
+def parse_exp_args(run_args):
+
+    args_file = run_args.o
+    use_gpu = run_args.use_gpu
+    use_signal = run_args.sig
+
     cf = cfp.ConfigParser()
 
     cf["DEFAULT"] = \
@@ -90,8 +95,11 @@ def parse_exp_args(args_file, use_gpu):
         args.num_ens = int(cf.get('ensemble', 'num_ens'))
 
     """ dataset args """
+    if use_signal is not None:
+        args.dataset = run_args.id
+    else:
+        args.dataset = str(cf.get('dataset', 'dataset')) #
     args.dataset_method = cf.get('dataset', 'dataset_method')
-    args.dataset = str(cf.get('dataset', 'dataset')) #
     args.normalize = bool(int(cf.get('dataset', 'normalize'))) #
     args.filter_outlier = bool(int(cf.get('dataset', 'filter_outlier'))) #
     args.y_floor = float(cf.get('dataset', 'y_floor'))

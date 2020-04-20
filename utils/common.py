@@ -104,8 +104,16 @@ class PlainDataset(Dataset):
         print('Loaded {} datapoints'.format(num_items))
 
     def filter_outlier(self, y_arr, args):
-        good_idx = ((y_arr>args.y_floor).flatten())*((y_arr<args.y_ceil).flatten())
-        print('Filtering {} points from total {} points'.format(y_arr.size-np.sum(good_idx), y_arr.size))
+        import pudb; pudb.set_trace()
+        percent = 0.01
+        y_ceil = np.percentile(y_arr, 100-percent, axis=0)
+        y_floor = np.percentile(y_arr, percent, axis=0)
+
+
+        good_idx = ((y_arr>y_floor).flatten())*((y_arr<y_ceil).flatten())
+        print('Filtering {} points from total {} points, for {} points'.format(
+                y_arr.size-np.sum(good_idx), y_arr.size, np.sum(good_idx)))
+
         return good_idx
 
     def __len__(self):

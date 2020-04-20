@@ -1,0 +1,50 @@
+[general]
+parent_ep = 5000
+
+
+[model]
+model_type = cnn
+
+arch = 
+ c1(och 32, ker 10, str 1, bn, pool avg, pk 5, ps 1); 
+ c1(och 64, ker 5, str 1, pool avg, pk 5, ps 1); 
+ c1(och 128, ker 5, str 1, pool avg, pk 5, ps 1); 
+ c1(och 128, ker 5, str 1, bn, pool avg, pk 5, ps 1); 
+ c1(och 64, ker 3, str 1, pool avg, pk 5, ps 1); 
+ c1(och 32, ker 3, str 1, bn, pool avg, pk 3, ps 1); 
+ c1(och 5, ker 2, str 1, pool avg, pk 2, ps 1); 
+ fc(out 512, bias, bn, actv relu);
+ fc(out 512, bias, bn, actv relu);
+ fc(out 512, bias, actv relu);
+ fc(out 256, bias, actv relu);
+ fc(out 64, bias, actv relu);
+ fc(out 1, bias)
+
+in_channels = 12
+in_length = 500
+output_size = 1
+
+
+[optimizer]
+loss_factor = 1
+opt_method = adam
+lr = 0.001
+lr_scheduler = 1
+patience = 10
+
+
+[dataset]
+normalize = 1
+filter_outlier = 1
+batch = 1024
+
+
+[gpu]
+expand_batch = 1
+pin_memory = 0
+
+
+[misc]
+seed = 2048 
+save_model_every = 50
+test_every = 10
