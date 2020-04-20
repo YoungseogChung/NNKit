@@ -92,7 +92,7 @@ def create_dataloader(args, set_type):
 
         train_data_loader = DataLoader(dataset=train_set, batch_size=args.batch,
                                        shuffle=True,
-                                       num_workers = args.num_cpu - 2,
+                                       num_workers = 0 #args.num_cpu - 2,
                                        pin_memory = args.pin_memory)
 
         print('Making testing dataset loader')
@@ -106,7 +106,7 @@ def create_dataloader(args, set_type):
                                        y_arr=test_y)
         test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set),
                                       shuffle=False,
-                                      num_workers = args.num_cpu - 2,
+                                      num_workers = 0 #args.num_cpu - 2,
                                       pin_memory = args.pin_memory)
 
         return train_data_loader, test_data_loader
@@ -129,7 +129,7 @@ def create_dataloader(args, set_type):
 
         data_loader = DataLoader(dataset=train_set, batch_size=args.batch,
                                  shuffle=True,
-                                 num_workers=args.num_cpu - 2,
+                                 num_workers=0 #args.num_cpu - 2,
                                  pin_memory=args.pin_memory)
 
     elif set_type == 'test':
@@ -150,7 +150,7 @@ def create_dataloader(args, set_type):
 
         data_loader = DataLoader(dataset=test_set, batch_size=args.batch, #len(test_set),
                                  shuffle=False,
-                                 num_workers = args.num_cpu - 2,
+                                 num_workers = 0 #args.num_cpu - 2,
                                  pin_memory = args.pin_memory)
 
     return data_loader
