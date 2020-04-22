@@ -46,6 +46,6 @@ pin_memory = 0
 
 [misc]
 seed = 2048 
-save_model_every = 10
-test_every = 50
+save_model_every = 50
+test_every = 10
 
