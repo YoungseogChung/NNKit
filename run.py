@@ -74,7 +74,7 @@ def create_dataloader(args, set_type):
                                         normalize=args.normalize,
                                         filter_outlier=args.filter_outlier,
                                         args=args,
-                                        X_arr=train_X, 
+                                        X_arr=train_X,
                                         y_arr=train_y)
         if args.normalize:
             args.X_mean, args.X_std = train_set.X_mean, train_set.X_std
@@ -102,7 +102,7 @@ def create_dataloader(args, set_type):
                                        args=args,
                                        X_norm_stats=X_norm_stats,
                                        y_norm_stats=y_norm_stats,
-                                       X_arr=test_X, 
+                                       X_arr=test_X,
                                        y_arr=test_y)
         test_data_loader = DataLoader(dataset=test_set, batch_size=len(test_set),
                                       shuffle=False,
@@ -113,9 +113,9 @@ def create_dataloader(args, set_type):
 
     if set_type == 'train':
         print('Making training dataset loader')
-        train_set = args.dataset_method(X_arr_path=args.train_X_path, 
+        train_set = args.dataset_method(X_arr_path=args.train_X_path,
                                         y_arr_path=args.train_y_path,
-                                        normalize=args.normalize, 
+                                        normalize=args.normalize,
                                         filter_outlier=args.filter_outlier,
                                         args=args)
         if args.normalize:
@@ -140,7 +140,7 @@ def create_dataloader(args, set_type):
         else:
             X_norm_stats, y_norm_stats = None, None
 
-        test_set = args.dataset_method(X_arr_path=args.test_X_path, 
+        test_set = args.dataset_method(X_arr_path=args.test_X_path,
                                        y_arr_path=args.test_y_path,
                                        normalize = False,
                                        filter_outlier=args.filter_outlier,
@@ -267,8 +267,12 @@ def test_epoch(model, dataloader, args):
             out_pred[num_items : num_items+output.size(0)] = output.cpu().data
             num_items += output.size(0)
             #out_pred[output.size(0)*idx:output.size(0)*(1+idx)] = output.data
-        exp_var = ev(dataloader.dataset.y, out_pred)
-        loss_mean = loss_val/(num_items)
+        try:
+            exp_var = ev(dataloader.dataset.y, out_pred)
+        except:
+            print('NaN outputted for explained variance')
+            exp_var = np.nan
+        loss_mean = loss_val/num_items
         return (loss_mean, exp_var), out_pred
 
 
