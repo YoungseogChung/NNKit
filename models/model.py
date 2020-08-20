@@ -10,13 +10,38 @@ from torch.nn.parameter import Parameter
 from torch.nn.utils import weight_norm
 from torch.autograd import Variable
 
-#sys.path.append('.')
-#import tables.CONV1D_TABLE as CONV1D_TABLE
-#import CONV1D_TABLE, FC_TABLE, temp_arch
-from models.tables import CONV1D_TABLE, FC_TABLE, temp_arch
 
-""" utilities """
+""" Constants """
+temp_arch = """ 
+c1(och 10, ker 3, str 1, pad 1, bias, bn, pt max, pk 2, ps 1, actv relu); 
+fc(out 100, bias, actv relu);
+fc(out 1, bias, bn, actv relu)
+"""
 
+CONV1D_TABLE = {
+    'och':  {'key': 'out_channels', 'default': 'must specify'},
+    'ker':  {'key': 'kernel_size', 'default': 5},
+    'str':  {'key': 'stride', 'default': 1},
+    'pad':  {'key': 'padding', 'default': 0},
+    'bias': {'key': 'bias', 'default': False},
+    'bn':   {'key': 'use_bn', 'default': False},
+    'pt':   {'key': 'pool_type', 'default': None},
+    'pk':   {'key': 'pool_kernel_size', 'default': None},
+    'ps':   {'key': 'pool_stride', 'default': 1},
+    'pp':   {'key': 'pool_padding', 'default': 0},
+    'actv': {'key': 'actv_type', 'default': None},
+
+}
+
+FC_TABLE = {
+    'out':  {'key': 'out_size', 'default': 'must specify'},
+    'bias': {'key': 'bias', 'default': False},
+    'bn':   {'key': 'use_bn', 'default': False},
+    'actv': {'key': 'actv_type', 'default': None},
+}
+
+
+""" Utilities """
 
 def decode_architecture(arch_str):
     decoded_list = []
@@ -132,6 +157,7 @@ class LinearLayer(nn.Module):
         #print('after linear layer\n', out)
 
         return out
+
 
 class Conv1DLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size,
@@ -261,6 +287,7 @@ class vanilla_nn(nn.Module):
 
         return out
 
+
 class prob_nn(nn.Module):
     def __init__(self, input_size=1, output_size=2, bias=True,
                  hidden_size=400, num_layers=4,
@@ -380,6 +407,7 @@ class prob_nn(nn.Module):
         pnn_out = torch.cat([means, variances], dim=1)
         #pnn_out = torch.cat([out[:,:self.mean_dim], F.softplus(out[:,self.mean_dim:])], dim=1)
         return pnn_out
+
 
 class pnn(nn.Module):
     def __init__(self, input_size=1, output_size=1, bias=True,
